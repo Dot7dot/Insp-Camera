@@ -992,6 +992,14 @@ dialog {
   box-shadow: 0 40px 120px -20px #000, inset 0 1px 0 rgba(255, 255, 255, .04);
 }
 dialog.wide { width: min(94vw, 580px); }
+dialog.confirm { width: min(86vw, 360px); padding: 22px; border-radius: 28px; }
+dialog.confirm .sheet-handle { display: none; }
+dialog.confirm .dialog-head { margin-bottom: 4px; }
+dialog.confirm .dialog-head h2 { font-family: var(--sans); font-size: 19px; font-weight: 700; letter-spacing: -.01em; overflow-wrap: anywhere; }
+dialog.confirm .dialog-head .icon-btn { display: none; }
+dialog.confirm .dialog-actions { margin-top: 18px; }
+dialog.confirm .dialog-actions > * { flex: 1; height: 46px; padding: 0 14px; }
+.dialog-alert { margin: 12px 0 0 !important; }
 dialog[open] { animation: pop-in .44s var(--ease-jelly); }
 dialog.closing { animation: pop-out .16s ease-in forwards; }
 dialog::backdrop { background: rgba(0, 0, 0, .62); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
@@ -1186,6 +1194,9 @@ body.dropping .drop-zone { display: flex; animation: fade-in .2s; }
   dialog.closing { animation: sheet-out .2s ease-in forwards; }
   @keyframes sheet-in { from { transform: translateY(100%); } }
   @keyframes sheet-out { to { transform: translateY(100%); } }
+  dialog.confirm { width: min(86vw, 360px); margin: auto; border-radius: 28px; border-bottom: 1px solid var(--line-2); padding: 22px; max-height: 80svh; }
+  dialog.confirm[open] { animation: pop-in .44s var(--ease-jelly); }
+  dialog.confirm.closing { animation: pop-out .16s ease-in forwards; }
   .sheet-handle { display: block; width: 40px; height: 5px; border-radius: 5px; background: var(--line-2); margin: 0 auto 14px; }
   .dialog-head h2 { font-size: 24px; }
   .dialog-actions > * { flex: 1; }
