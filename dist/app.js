@@ -167,6 +167,8 @@ async function updateStorageNote() {
 
 function toast(msg, opts = {}) {
   clearTimeout(toastTimer);
+  const host = dialog.open ? dialog : document.body;
+  if (toastEl.parentNode !== host) host.append(toastEl);
   toastAction = opts.action || null;
   toastEl.innerHTML = `<span class="toast-msg">${icon(opts.icon || 'check')}<span>${esc(msg)}</span></span>${opts.label ? `<button class="toast-btn j" data-action="toast-action">${esc(opts.label)}</button>` : ''}`;
   toastEl.classList.toggle('has-action', !!opts.label);
@@ -974,10 +976,13 @@ function viewerKey(e) {
 
 function showDialog(title, body, actions = '', opts = {}) {
   clearTimeout(dialogCloseTimer);
-  dialog.className = opts.wide ? 'wide' : opts.confirm ? 'confirm' : '';
+  const keepToast = toastEl.parentNode === dialog;
+  dialog.className = (opts.wide ? 'wide' : opts.confirm ? 'confirm' : '') + (opts.still && dialog.open ? ' still' : '');
   dialog.innerHTML = `<div class="sheet-handle" aria-hidden="true"></div><div class="dialog-head"><h2 id="dialog-title">${title}</h2>${iconBtn('close-dialog', 'close', '關閉')}</div>${body}${actions ? `<div class="dialog-actions">${actions}</div>` : ''}`;
   dialog.setAttribute('aria-labelledby', 'dialog-title');
+  if (keepToast) dialog.append(toastEl);
   if (!dialog.open) dialog.showModal();
+  if (opts.scroll != null) dialog.scrollTop = opts.scroll === Infinity ? dialog.scrollHeight : opts.scroll;
 }
 function closeDialog() {
   if (!dialog.open) return;
@@ -987,7 +992,7 @@ function closeDialog() {
   dialogCloseTimer = setTimeout(() => { dialog.classList.remove('closing'); if (dialog.open) dialog.close(); }, 190);
 }
 dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(); });
-dialog.addEventListener('close', () => { cropState = null; afterFolderSave = null; dialog.className = ''; });
+dialog.addEventListener('close', () => { cropState = null; afterFolderSave = null; dialog.className = ''; if (toastEl.parentNode === dialog) document.body.append(toastEl); });
 dialog.addEventListener('click', e => {
   if (e.target !== dialog) return;
   const r = dialog.getBoundingClientRect();
@@ -1000,13 +1005,17 @@ dialog.addEventListener('keydown', e => {
   }
 });
 
-function showFolders() {
+let managerScroll = 0;
+const inManager = () => dialog.open && !!$('.fm-list', dialog);
+function showFolders(scroll) {
   showDialog('Room for more ideas.', `<p class="dialog-lead">給每種靈感一個位置。相機四周的果汁格會隨資料夾數量調整；只有一個資料夾時，外框不分格。</p>
     <div class="fm-list">${folders.map((f, i) => `<div class="fm-row"><span class="fm-dot flavor-${i % 6}">${icon('folder')}</span><span class="fm-name">${esc(f.name)}<small>${countIn(f.id)} 張照片</small></span>${iconBtn('rename-folder', 'edit', `重新命名「${esc(f.name)}」`, `data-id="${esc(f.id)}"`)}${iconBtn('delete-folder', 'trash', `刪除「${esc(f.name)}」`, `data-id="${esc(f.id)}" ${folders.length === 1 ? 'disabled' : ''}`, 'danger')}</div>`).join('')}</div>
-    ${folders.length < MAX_FOLDERS ? `<button class="btn-jelly block j" data-action="new-folder">${icon('plus')}新增資料夾</button>` : `<p class="dialog-note">最多 ${MAX_FOLDERS} 個資料夾，讓相機四周保持好點選。</p>`}`);
+    ${folders.length < MAX_FOLDERS ? `<button class="btn-jelly block j" data-action="new-folder">${icon('plus')}新增資料夾</button>` : `<p class="dialog-note">最多 ${MAX_FOLDERS} 個資料夾，讓相機四周保持好點選。</p>`}`, '', { still: scroll != null, scroll });
 }
-function editFolder(id, { then = null, back = 'folders' } = {}) {
+function backToFolders() { showFolders(managerScroll); }
+function editFolder(id, { then = null, back = 'folders-back' } = {}) {
   if (!id && folders.length >= MAX_FOLDERS) { warn(`最多可建立 ${MAX_FOLDERS} 個資料夾`); return; }
+  if (inManager()) managerScroll = dialog.scrollTop;
   const f = folderById(id);
   const ideas = ['午後的光', '材質', '配色', '字體', '街角', '植物', '構圖', '包裝'].filter(s => !folders.some(x => x.name === s)).slice(0, 5);
   showDialog(f ? 'Rename a little space.' : 'A new little space.',
@@ -1031,7 +1040,7 @@ async function storeFolder(id) {
   afterFolderSave = null;
   toast(id ? '資料夾已重新命名' : `已新增「${name}」`);
   if (then) { closeDialog(); render(); await then(newId); }
-  else { render(); showFolders(); }
+  else { render(); showFolders(id ? managerScroll : Infinity); }
 }
 function deleteTarget(id) {
   const i = folderIndex(id);
@@ -1040,10 +1049,11 @@ function deleteTarget(id) {
 function askDeleteFolder(id) {
   const f = folderById(id), target = deleteTarget(id), n = countIn(id);
   if (!f || !target) return;
+  if (inManager()) managerScroll = dialog.scrollTop;
   showDialog(`刪除「${esc(f.name)}」？`, `<p class="dialog-lead">${n
     ? `其中 ${n} 張照片與筆記會移到「${esc(target.name)}」，不會遺失。`
     : '這個資料夾目前沒有照片。'}</p>`,
-    `<button class="btn-ghost j" data-action="close-dialog">取消</button><button class="btn-jelly danger-gel j" data-action="confirm-delete-folder" data-id="${esc(id)}">${icon('trash')}刪除</button>`, { confirm: true });
+    `<button class="btn-ghost j" data-action="folders-back">取消</button><button class="btn-jelly danger-gel j" data-action="confirm-delete-folder" data-id="${esc(id)}">${icon('trash')}刪除</button>`, { confirm: true });
 }
 async function deleteFolder(id) {
   const f = folderById(id), target = deleteTarget(id);
@@ -1059,8 +1069,8 @@ async function deleteFolder(id) {
   for (const p of photos) if (p.folderId === id) p.folderId = target.id;
   folders = nextFolders;
   if (folderId === id) { folderId = target.id; index = 0; rememberFolder(); }
-  closeDialog();
   render();
+  if (dialog.open) backToFolders();
   haptic(14);
   toast(`已刪除「${f.name}」${moved.length ? `，照片移到「${target.name}」` : ''}`, {
     icon: 'trash', label: '復原', duration: 6000, action: async () => {
@@ -1072,6 +1082,7 @@ async function deleteFolder(id) {
         folders = oldFolders;
         for (const p of photos) if (movedSet.has(p.id)) p.folderId = id;
         render();
+        if (inManager()) showFolders(dialog.scrollTop);
         toast(`已復原「${f.name}」`);
       } catch { warn('復原失敗，請再試一次'); }
     }
@@ -1416,6 +1427,7 @@ async function handle(action, el) {
     case 'confirm-clear-samples': await clearSamples(); break;
 
     case 'folders': showFolders(); break;
+    case 'folders-back': backToFolders(); break;
     case 'new-folder':
       if (el.closest('dialog')) editFolder(null);
       else editFolder(null, { back: 'close-dialog', then: view === 'album' ? id => { folderId = id; index = 0; renderAlbum(); } : null });
