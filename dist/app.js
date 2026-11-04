@@ -127,6 +127,24 @@ const setSetting = (key, value) => request('settings', 'readwrite', s => s.put(v
 const saveFolders = () => setSetting('folders', folders);
 const rememberFolder = () => setSetting('lastFolder', folderId).catch(() => {});
 const savePhoto = p => request('photos', 'readwrite', s => s.put(p));
+// Read-modify-write inside one transaction. Re-storing a Blob that was read out earlier can fail on
+// iOS Safari, so edits always start from the record as it is stored right now.
+function patchPhoto(id, mutate) {
+  let updated = null;
+  return transaction(['photos'], tx => {
+    const store = tx.objectStore('photos'), r = store.get(id);
+    r.onsuccess = () => { if (!r.result) return; updated = r.result; mutate(updated); store.put(updated); };
+  }).then(() => { if (!updated) throw new Error('missing'); return updated; });
+}
+function moveRecords(tx, matches, to) {
+  const r = tx.objectStore('photos').openCursor();
+  r.onsuccess = () => {
+    const c = r.result;
+    if (!c) return;
+    if (matches(c.value)) { const v = c.value; v.folderId = to; c.update(v); }
+    c.continue();
+  };
+}
 
 function persistStorage() {
   if (persistAsked) return;
@@ -158,7 +176,20 @@ function toast(msg, opts = {}) {
   toastTimer = setTimeout(hideToast, opts.duration || (opts.label ? 5200 : 2800));
 }
 function hideToast() { clearTimeout(toastTimer); toastEl.classList.remove('visible'); toastAction = null; }
-const warn = msg => toast(msg, { icon: 'close' });
+function warn(msg) {
+  if (!dialog.open) { toast(msg, { icon: 'close' }); return; }
+  let alert = $('#dialog-alert', dialog);
+  if (!alert) {
+    alert = document.createElement('p');
+    alert.id = 'dialog-alert';
+    alert.className = 'field-error dialog-alert';
+    alert.setAttribute('role', 'alert');
+    const actions = $('.dialog-actions', dialog);
+    actions ? actions.before(alert) : dialog.append(alert);
+  }
+  alert.textContent = msg;
+  shake(alert);
+}
 
 function jelly(el) {
   if (!el || !el.classList.contains('j') || reduced()) return;
@@ -606,7 +637,7 @@ function bindNote(p) {
     clearTimeout(noteTimers.get(p.id));
     noteTimers.set(p.id, setTimeout(async () => {
       try {
-        await savePhoto(p);
+        await patchPhoto(p.id, rec => { rec.note = p.note; });
         noteTimers.delete(p.id);
         const s = $('#note-status');
         if (current()?.id === p.id && s) { s.innerHTML = icon('check') + '已儲存'; s.classList.remove('saving'); }
@@ -622,7 +653,7 @@ function flushNotes() {
   for (const [id, timer] of noteTimers) {
     clearTimeout(timer);
     const p = photos.find(x => x.id === id);
-    if (p) savePhoto(p).catch(() => {});
+    if (p) patchPhoto(id, rec => { rec.note = p.note; }).catch(() => {});
     noteTimers.delete(id);
   }
 }
@@ -943,7 +974,7 @@ function viewerKey(e) {
 
 function showDialog(title, body, actions = '', opts = {}) {
   clearTimeout(dialogCloseTimer);
-  dialog.className = opts.wide ? 'wide' : '';
+  dialog.className = opts.wide ? 'wide' : opts.confirm ? 'confirm' : '';
   dialog.innerHTML = `<div class="sheet-handle" aria-hidden="true"></div><div class="dialog-head"><h2 id="dialog-title">${title}</h2>${iconBtn('close-dialog', 'close', '關閉')}</div>${body}${actions ? `<div class="dialog-actions">${actions}</div>` : ''}`;
   dialog.setAttribute('aria-labelledby', 'dialog-title');
   if (!dialog.open) dialog.showModal();
@@ -1002,28 +1033,49 @@ async function storeFolder(id) {
   if (then) { closeDialog(); render(); await then(newId); }
   else { render(); showFolders(); }
 }
+function deleteTarget(id) {
+  const i = folderIndex(id);
+  return folders[i - 1] || folders[i + 1];
+}
 function askDeleteFolder(id) {
-  const f = folderById(id), others = folders.filter(x => x.id !== id), n = countIn(id);
-  if (!f || !others.length) return;
-  showDialog('Keep the ideas.', n
-    ? `<p class="dialog-lead">刪除「${esc(f.name)}」後，其中 ${n} 張照片與筆記會移到你選擇的資料夾，不會遺失。</p><label for="target-folder">移動到</label><select id="target-folder">${others.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select>`
-    : `<p class="dialog-lead">「${esc(f.name)}」目前沒有照片，可以直接刪除。</p><input type="hidden" id="target-folder" value="${esc(others[0].id)}">`,
-    `<button class="btn-ghost j" data-action="folders">取消</button><button class="btn-jelly danger-gel j" data-action="confirm-delete-folder" data-id="${esc(id)}">${icon('trash')}${n ? '移動照片並刪除' : '刪除資料夾'}</button>`);
+  const f = folderById(id), target = deleteTarget(id), n = countIn(id);
+  if (!f || !target) return;
+  showDialog(`刪除「${esc(f.name)}」？`, `<p class="dialog-lead">${n
+    ? `其中 ${n} 張照片與筆記會移到「${esc(target.name)}」，不會遺失。`
+    : '這個資料夾目前沒有照片。'}</p>`,
+    `<button class="btn-ghost j" data-action="close-dialog">取消</button><button class="btn-jelly danger-gel j" data-action="confirm-delete-folder" data-id="${esc(id)}">${icon('trash')}刪除</button>`, { confirm: true });
 }
 async function deleteFolder(id) {
-  const target = $('#target-folder').value, nextFolders = folders.filter(f => f.id !== id);
+  const f = folderById(id), target = deleteTarget(id);
+  if (!f || !target) return;
+  const oldFolders = folders.map(x => ({ ...x })), nextFolders = folders.filter(x => x.id !== id);
+  const moved = photos.filter(p => p.folderId === id).map(p => p.id), movedSet = new Set(moved);
   try {
     await transaction(['settings', 'photos'], tx => {
       tx.objectStore('settings').put(nextFolders, 'folders');
-      for (const p of photos.filter(p => p.folderId === id)) tx.objectStore('photos').put({ ...p, folderId: target });
+      moveRecords(tx, rec => rec.folderId === id, target.id);
     });
-    for (const p of photos) if (p.folderId === id) p.folderId = target;
-    folders = nextFolders;
-    if (folderId === id) { folderId = target; index = 0; }
-    render();
-    showFolders();
-    toast('資料夾已刪除，照片都保留了');
-  } catch { warn('操作失敗，請再試一次'); }
+  } catch (e) { console.error(e); warn('刪除失敗，請再試一次'); return; }
+  for (const p of photos) if (p.folderId === id) p.folderId = target.id;
+  folders = nextFolders;
+  if (folderId === id) { folderId = target.id; index = 0; rememberFolder(); }
+  closeDialog();
+  render();
+  haptic(14);
+  toast(`已刪除「${f.name}」${moved.length ? `，照片移到「${target.name}」` : ''}`, {
+    icon: 'trash', label: '復原', duration: 6000, action: async () => {
+      try {
+        await transaction(['settings', 'photos'], tx => {
+          tx.objectStore('settings').put(oldFolders, 'folders');
+          moveRecords(tx, rec => movedSet.has(rec.id), id);
+        });
+        folders = oldFolders;
+        for (const p of photos) if (movedSet.has(p.id)) p.folderId = id;
+        render();
+        toast(`已復原「${f.name}」`);
+      } catch { warn('復原失敗，請再試一次'); }
+    }
+  });
 }
 function askMove() {
   const p = current();
@@ -1033,31 +1085,39 @@ function askMove() {
 async function movePhoto(target) {
   const p = current();
   if (!p || target === p.folderId) return;
-  const next = { ...p, folderId: target };
-  await savePhoto(next);
-  Object.assign(p, next);
+  try { await patchPhoto(p.id, rec => { rec.folderId = target; }); }
+  catch (e) { console.error(e); warn('移動失敗，請再試一次'); return; }
+  p.folderId = target;
   closeDialog();
   renderAlbum();
   toast(`已移動到「${folderById(target).name}」`, { label: '前往', action: () => openPhoto(p.id) });
 }
+const pendingDeletes = new Map();
+function commitDelete(id) {
+  clearTimeout(pendingDeletes.get(id));
+  pendingDeletes.delete(id);
+  return request('photos', 'readwrite', st => st.delete(id)).catch(() => {});
+}
+function flushDeletes() { for (const id of [...pendingDeletes.keys()]) commitDelete(id); }
 async function deletePhoto() {
   const p = current();
   if (!p) return;
   clearTimeout(noteTimers.get(p.id));
   noteTimers.delete(p.id);
-  await request('photos', 'readwrite', s => s.delete(p.id));
   photos = photos.filter(x => x.id !== p.id);
-  invalidate(p);
+  pendingDeletes.set(p.id, setTimeout(() => commitDelete(p.id), 6500));
   haptic(14);
   renderAlbum();
   toast('照片已刪除', {
-    icon: 'trash', label: '復原', duration: 6000, action: async () => {
-      try {
-        await savePhoto(p);
-        photos.push(p);
-        if (view === 'album') { folderId = p.folderId; index = Math.max(0, folderPhotos().findIndex(x => x.id === p.id)); renderAlbum(); }
-        toast('已復原照片');
-      } catch { warn('復原失敗，請再試一次'); }
+    icon: 'trash', label: '復原', duration: 6000, action: () => {
+      if (!pendingDeletes.has(p.id)) { warn('已無法復原'); return; }
+      clearTimeout(pendingDeletes.get(p.id));
+      pendingDeletes.delete(p.id);
+      photos.push(p);
+      if (p.note) patchPhoto(p.id, rec => { rec.note = p.note; }).catch(() => {});
+      if (view === 'album') { folderId = p.folderId; index = Math.max(0, folderPhotos().findIndex(x => x.id === p.id)); renderAlbum(); }
+      else render();
+      toast('已復原照片');
     }
   });
 }
@@ -1074,17 +1134,17 @@ async function savePhotoName() {
   const input = $('#photo-name'), name = input.value.trim().replace(/\s+/g, ' ');
   if (!name) { $('#photo-name-error').textContent = '請輸入名稱'; shake(input); return; }
   const p = current();
-  const next = { ...p, name };
-  await savePhoto(next);
-  Object.assign(p, next);
+  try { await patchPhoto(p.id, rec => { rec.name = name; }); }
+  catch (e) { console.error(e); warn('儲存失敗，請再試一次'); return; }
+  p.name = name;
   closeDialog();
   renderAlbum();
   toast('名稱已更新');
 }
 function askClearSamples() {
   const n = photos.filter(p => p.demo).length;
-  showDialog('A clean slate.', `<p class="dialog-lead">移除 ${n} 張示範照片與它們的筆記。你自己拍攝或匯入的照片不受影響，示範照片之後也不會再出現。</p>`,
-    `<button class="btn-ghost j" data-action="close-dialog">保留</button><button class="btn-jelly j" data-action="confirm-clear-samples">${icon('sparkle')}清除示範照片</button>`);
+  showDialog('清除示範照片？', `<p class="dialog-lead">移除 ${n} 張示範照片與它們的筆記。你自己拍攝或匯入的照片不受影響，示範照片之後也不會再出現。</p>`,
+    `<button class="btn-ghost j" data-action="close-dialog">保留</button><button class="btn-jelly j" data-action="confirm-clear-samples">${icon('sparkle')}清除</button>`, { confirm: true });
 }
 async function clearSamples() {
   const demos = photos.filter(p => p.demo);
@@ -1096,7 +1156,7 @@ async function clearSamples() {
     closeDialog();
     render();
     toast(`已清除 ${demos.length} 張示範照片`);
-  } catch { warn('清除失敗，請再試一次'); }
+  } catch (e) { console.error(e); warn('清除失敗，請再試一次'); }
 }
 
 /* --------------------------------------------------------------------------
@@ -1163,8 +1223,8 @@ async function importFiles(files, native = false) {
   }
 }
 async function updatePhotoBlob(p, blob) {
-  const updated = { ...p, blob, originalBlob: p.originalBlob || p.blob || await (await fetch(p.src)).blob() };
-  await savePhoto(updated);
+  const sample = p.blob || p.originalBlob ? null : await (await fetch(p.src)).blob();
+  const updated = await patchPhoto(p.id, rec => { rec.originalBlob = rec.originalBlob || rec.blob || sample; rec.blob = blob; });
   Object.assign(p, updated);
   invalidate(p);
 }
@@ -1272,11 +1332,9 @@ async function resetPhoto() {
   const p = current();
   if (!p?.originalBlob) return;
   try {
-    const next = { ...p, blob: p.originalBlob };
-    delete next.originalBlob;
-    await savePhoto(next);
+    const updated = await patchPhoto(p.id, rec => { if (rec.originalBlob) rec.blob = rec.originalBlob; delete rec.originalBlob; });
     delete p.originalBlob;
-    Object.assign(p, next);
+    Object.assign(p, updated);
     invalidate(p);
     renderAlbum();
     toast('已還原原始照片');
@@ -1402,7 +1460,7 @@ document.addEventListener('click', e => {
       const twin = document.querySelector(key);
       if (twin && !twin.classList.contains('gulp')) jelly(twin);
     })
-    .catch(() => warn('操作未完成，請再試一次'));
+    .catch(e => { console.error(e); warn('操作未完成，請再試一次'); });
 });
 document.addEventListener('input', e => {
   if (e.target.id === 'photo-range') {
@@ -1473,10 +1531,10 @@ addEventListener('paste', e => {
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { stopCamera(); flushNotes(); }
+  if (document.hidden) { stopCamera(); flushNotes(); flushDeletes(); }
   else if (view === 'camera' && !pending && !stream) { cameraStarting = true; renderCamera(); startCamera(); }
 });
-addEventListener('pagehide', flushNotes);
+addEventListener('pagehide', () => { flushNotes(); flushDeletes(); });
 addEventListener('resize', () => { if (cropState) updateCrop(); });
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; if (view === 'home') renderHome(); });
 addEventListener('appinstalled', () => { installPrompt = null; toast('已安裝 Insp Camera'); if (view === 'home') renderHome(); });

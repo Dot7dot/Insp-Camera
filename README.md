@@ -13,7 +13,7 @@ A mobile-first inspiration camera for creators. Capture a moment, tap a surround
 - **Capture:** live camera with front/back switching, flash + haptic feedback, native mobile camera fallback, and photo import. The surrounding folders are juicy, fizzing orange cells with jelly feedback; tapping one after a shot flies the photo into it. Save to a brand-new folder straight from the capture screen. Keyboard: `Space` shoots/saves, `1`–`9` picks or saves to a folder, `Esc` retakes.
 - Six initial folders (up to 12); create, rename, and delete folders. The camera frame adapts to folder count, with an undivided frame for a single folder. The last folder you used is remembered.
 - **Collection:** single-photo view or grid view. Tap any photo to open a full-screen viewer with pinch / double-tap / wheel zoom, pan, swipe between photos, swipe down to close, and keyboard control. Swipe the main photo to move between photos.
-- Permanent rotate and crop (drag, pinch or wheel zoom; original, 1:1, 4:5, 3:4, 9:16, 4:3, 16:9), restore original, rename photos, autosaved notes, move between folders, share (Web Share), download, and delete with undo.
+- Permanent rotate and crop (drag, pinch or wheel zoom; original, 1:1, 4:5, 3:4, 9:16, 4:3, 16:9), restore original, rename photos, autosaved notes, move between folders, share (Web Share), download, and delete with undo. Deleting a folder asks once in a small confirm, moves its photos to the neighbouring folder, and can be undone.
 - Drag-and-drop or paste images to import. One-tap removal of the sample photos.
 - Phone/browser back button works across pages and closes the viewer. Dialogs become bottom sheets on phones.
 - Works offline after the first visit (network-first service worker caching only the app's own files).
