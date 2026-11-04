@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
+  <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#f4f1e9">
   <meta name="description" content="Insp Camera — 捕捉、分類、重溫你的創作靈感。">
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
@@ -14,8 +16,8 @@
   <main id="app"><div class="loading">Insp<span>Camera</span></div></main>
   <div id="toast" role="status" aria-live="polite"></div>
   <dialog id="dialog"></dialog>
-  <input id="file-input" type="file" accept="image/*" multiple hidden>
-  <input id="native-input" type="file" accept="image/*" capture="environment" hidden>
+  <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif" multiple hidden>
+  <input id="native-input" type="file" accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif" capture="environment" hidden>
   <script type="module" src="./app.js"></script>
 </body>
 </html>

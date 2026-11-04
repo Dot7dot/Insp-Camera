@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; upgrade-insecure-requests">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#f4f1e9">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <title>隱私與安全 — Insp Camera</title>
+</head>
+<body><main class="privacy-page">
+  <a href="./">← 回到 Insp Camera</a>
+  <p class="micro">YOUR MOMENTS STAY WITH YOU</p>
+  <h1>隱私與安全</h1>
+  <p>Insp Camera 是公開的靜態網頁 App，任何人都可以開啟使用。你的收藏不是公開相簿。</p>
+  <h2>照片和筆記放在哪裡？</h2>
+  <p>照片、資料夾及筆記儲存在目前瀏覽器的 IndexedDB。App 不會將它們上傳到 GitHub、伺服器或其他使用者的裝置，也不提供雲端同步。頁面中標示的示範照片是隨網站提供的公開圖片。</p>
+  <p>換手機、換瀏覽器或改用不同網站網址，不會自動帶入先前的收藏。清除網站資料、某些私密瀏覽模式或裝置儲存空間不足，都可能導致資料移除；請下載重要照片備份。</p>
+  <h2>相機與匯入照片</h2>
+  <p>進入拍攝畫面才會請求相機權限，不會請求麥克風權限。返回首頁、相簿或切到背景時，App 會停止即時相機。你也可以拒絕相機權限，改用照片匯入。</p>
+  <p>匯入圖片會在瀏覽器中重新編碼為 JPEG，並縮至最長邊 2400 像素；不會保留來源圖片的 EXIF 中繼資料（例如 GPS 位置）。下載的是 App 中儲存的版本，不是來源檔案。單張圖片限制為 25 MB、6400 萬像素。</p>
+  <h2>網路請求與網站託管</h2>
+  <p>網站程式與示範圖片均由本網站提供，字型使用裝置內建字型，沒有廣告、分析追蹤或第三方字型。GitHub Pages 負責 HTTPS 託管，可能依其隱私政策處理 IP 位址等一般網站存取資訊；這不代表 App 會上傳你的收藏。</p>
+  <h2>裝置上的資料保護</h2>
+  <p>本機收藏沒有額外加密或密碼鎖。其他可使用相同裝置和瀏覽器的人，也可能看到你的收藏。請不要把它作為機密資訊的保管工具。</p>
+  <p>GitHub Pages 同一帳號下的專案可能共用 dot7dot.github.io 網站來源。資料庫雖依 App 路徑命名以避免誤用，但瀏覽器並不以專案路徑隔離資料權限；同來源的其他程式仍可能存取本機收藏。請只在信任的裝置和瀏覽器使用。</p>
+  <h2>回報問題</h2>
+  <p>一般問題可以到 <a href="https://github.com/Dot7dot/Insp-Camera/issues" rel="noreferrer">GitHub 專案</a>回報，請勿在公開 Issue 附上私人照片、筆記、密碼或其他機密資訊。</p>
+</main></body>
+</html>

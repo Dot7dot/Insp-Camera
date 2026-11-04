@@ -1,5 +1,7 @@
 # Insp Camera
 
+**Public app:** https://dot7dot.github.io/Insp-Camera/
+
 A mobile-first inspiration camera for creators. Capture a moment, tap a surrounding folder to save it, and revisit your collection with photo adjustments and notes.
 
 為創作者打造的靈感相機：快速拍攝並分類，重新發現收藏中的創意線索。
@@ -34,3 +36,29 @@ Visit http://localhost:8080. Camera access requires HTTPS or localhost; on mobil
 - `.openai/hosting.json` — Sites hosting configuration
 
 Interface: Traditional Chinese with English editorial headings. Supports current mobile Safari and Chrome with IndexedDB and Canvas. No account or backend is required.
+
+## GitHub Pages deployment
+
+Pushes to `main` and manual runs deploy through `.github/workflows/pages.yml`.
+Only `dist/` is uploaded; the repository settings and development files are excluded.
+GitHub Pages must use **GitHub Actions** as its publishing source, with HTTPS enforced.
+No custom domain or token is required. Workflow actions are pinned to immutable commit SHAs.
+Checkout does not persist credentials. Only the deployment job has `pages: write` and `id-token: write`; source access remains read-only.
+
+Run the dependency-free pre-deployment check:
+
+```sh
+node scripts/check-site.mjs
+```
+
+## Privacy and security
+
+- Photos and notes remain in the visitor's browser. There is no upload endpoint, account system, analytics, advertising, or external font request.
+- A CSP restricts scripts and connections to the same origin and blocks plugins, base-URL injection, and form submissions. Inline styles remain necessary for the camera layout and crop controls; inline scripts and eval are not allowed.
+- Camera access needs browser permission. Audio is never requested, and live tracks stop when leaving the camera or hiding the page.
+- Imports accept supported raster image types, at most 25 MiB and 64 megapixels. They are re-encoded locally into JPEG (maximum 2400 pixels on the longest edge), dropping source EXIF metadata.
+- Stored data is not additionally encrypted or password protected. GitHub Pages project paths on the same owner origin are not security boundaries; other trusted/untrusted apps hosted at `dot7dot.github.io` share browser-origin privileges. The database is path-namespaced to avoid accidental collisions, not to provide isolation.
+- GitHub may process ordinary website access logs. Each visitor can read the [privacy explanation](https://dot7dot.github.io/Insp-Camera/privacy.html).
+- The previous Sites domain and GitHub Pages have different storage origins; collections do not automatically transfer. Download/re-import photos when moving between them.
+
+The content checks and storage/interaction tests do not replace a browser or security audit. Test camera permission, import, crop, and download on actual iOS/Android devices.
