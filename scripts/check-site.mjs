@@ -13,6 +13,7 @@ const policy=html.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/
 assert(policy.includes("script-src 'self';"),'Scripts must be same-origin');assert(!policy.includes('unsafe-eval'),'No eval policy');assert(policy.includes("connect-src 'self';"),'No external network endpoints');assert(policy.includes("object-src 'none';"),'No plugins');assert(policy.includes("base-uri 'none';"),'No base URL injection');
 const css=await readFile(resolve(root,'styles.css'),'utf8');assert(!/@import|https?:\/\//.test(css),'No external styles or fonts');
 const js=await readFile(resolve(root,'app.js'),'utf8');assert(!/https?:\/\/|sendBeacon|XMLHttpRequest|WebSocket/.test(js),'No external services or upload endpoints');assert(js.includes('audio:false'),'Camera must not request microphone');
-const check=spawnSync(process.execPath,['--check',resolve(root,'app.js')],{encoding:'utf8'});assert.equal(check.status,0,check.stderr);
+const sw=await readFile(resolve(root,'sw.js'),'utf8');assert(!/https?:\/\/|sendBeacon|XMLHttpRequest|WebSocket|indexedDB/.test(sw),'Service worker must stay same-origin and never touch the photo database');
+for(const file of ['app.js','sw.js']){const check=spawnSync(process.execPath,['--check',resolve(root,file)],{encoding:'utf8'});assert.equal(check.status,0,check.stderr)}
 const manifest=JSON.parse(await readFile(resolve(root,'manifest.webmanifest'),'utf8'));assert.equal(manifest.start_url,'./');assert.equal(manifest.scope,'./');
-console.log(`PASS: ${files} public files; relative assets; no credential patterns; CSP and referrer policy; no external fonts/services; microphone disabled; valid JS and manifest.`);
+console.log(`PASS: ${files} public files; relative assets; no credential patterns; CSP and referrer policy; no external fonts/services; microphone disabled; valid JS, service worker and manifest.`);

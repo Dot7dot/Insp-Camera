@@ -8,14 +8,16 @@ A mobile-first inspiration camera for creators. Capture a moment, tap a surround
 
 ## Features
 
-- Minimal home screen with Camera and Collection entrances.
-- Live camera, native mobile camera fallback, and photo import.
-- Six initial folders; create, rename, and delete folders. The surrounding camera frame adapts to folder count, with an undivided frame for a single folder.
-- Folder tabs, previous/next buttons, photo slider, and thumbnails.
-- Preview zoom, permanent rotate and crop with drag/zoom and aspect ratios, plus restore original.
-- Autosaved notes, folder moves, photo download, and deletion.
-- IndexedDB storage on the current browser/device. Photos are not uploaded or synchronized. Clearing website data removes the collection; download important images for backup.
-- Example photos are clearly marked as samples and can be deleted.
+- Black / orange design system with glossy "jelly" orange buttons that squish and bounce on tap (respects *reduce motion*).
+- Minimal home screen with Capture and Collection entrances, a collection preview, and a "recent inspiration" strip.
+- **Capture:** live camera with front/back switching, flash + haptic feedback, native mobile camera fallback, and photo import. The surrounding folders are juicy, fizzing orange cells with jelly feedback; tapping one after a shot flies the photo into it. Save to a brand-new folder straight from the capture screen. Keyboard: `Space` shoots/saves, `1`–`9` picks or saves to a folder, `Esc` retakes.
+- Six initial folders (up to 12); create, rename, and delete folders. The camera frame adapts to folder count, with an undivided frame for a single folder. The last folder you used is remembered.
+- **Collection:** single-photo view or grid view. Tap any photo to open a full-screen viewer with pinch / double-tap / wheel zoom, pan, swipe between photos, swipe down to close, and keyboard control. Swipe the main photo to move between photos.
+- Permanent rotate and crop (drag, pinch or wheel zoom; original, 1:1, 4:5, 3:4, 9:16, 4:3, 16:9), restore original, rename photos, autosaved notes, move between folders, share (Web Share), download, and delete with undo.
+- Drag-and-drop or paste images to import. One-tap removal of the sample photos.
+- Phone/browser back button works across pages and closes the viewer. Dialogs become bottom sheets on phones.
+- Works offline after the first visit (network-first service worker caching only the app's own files).
+- IndexedDB storage on the current browser/device; persistent storage is requested on the first save. Photos are not uploaded or synchronized. Clearing website data removes the collection; download important images for backup.
 
 ## Run locally
 
@@ -31,7 +33,8 @@ Visit http://localhost:8080. Camera access requires HTTPS or localhost; on mobil
 
 - `dist/index.html` — app shell
 - `dist/app.js` — camera, IndexedDB storage, folders, album, notes, photo edits
-- `dist/styles.css` — responsive interface
+- `dist/styles.css` — responsive black/orange interface
+- `dist/sw.js` — offline cache for the app shell (never touches photos)
 - `dist/assets/` — sample photographs from Unsplash
 - `.openai/hosting.json` — Sites hosting configuration
 

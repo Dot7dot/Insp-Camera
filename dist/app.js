@@ -1,108 +1,1518 @@
-const $ = (s, root=document) => root.querySelector(s);
-const app = $('#app'), dialog = $('#dialog');
+// Insp Camera — capture, sort and revisit inspiration.
+// Everything stays in this browser (IndexedDB). No uploads, no accounts.
+
+const $ = (s, root = document) => root.querySelector(s);
+const $$ = (s, root = document) => [...root.querySelectorAll(s)];
+const app = $('#app');
+const dialog = $('#dialog');
+const toastEl = $('#toast');
+const motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+const reduced = () => motionQuery.matches;
+
+/* --------------------------------------------------------------------------
+   Icons
+   -------------------------------------------------------------------------- */
+
 const paths = {
- camera:'<path d="M4 6h4l2-3h4l2 3h4a2 2 0 0 1 2 2v11H2V8a2 2 0 0 1 2-2Z"/><circle cx="12" cy="12.5" r="4"/><path d="M18 9h.01"/>',
- album:'<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 3v18M11 8h6M11 12h6M11 16h4"/>',
- folder:'<path d="M3 7V5h7l2 3h9v12H3V7Z"/><path d="M3 8h9"/>',
- back:'<path d="m12 5-7 7 7 7M5 12h15"/>',right:'<path d="m9 5 7 7-7 7"/>',left:'<path d="m15 5-7 7 7 7"/>',
- plus:'<path d="M12 5v14M5 12h14"/>',minus:'<path d="M5 12h14"/>',close:'<path d="m6 6 12 12M6 18 18 6"/>',
- check:'<path d="m5 12 4 4L19 6"/>',import:'<path d="M12 15V3m-4 4 4-4 4 4M4 14v6h16v-6"/>',
- download:'<path d="M12 3v12m-4-4 4 4 4-4M4 17v4h16v-4"/>',
- image:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-7 5 8"/>',
- crop:'<path d="M7 2v15h15M2 7h15v15"/>',rotate:'<path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/>',
- edit:'<path d="m15 4 5 5M4 20l5-1L21 7l-4-4L5 15l-1 5Z"/>',trash:'<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>',
- reset:'<path d="M4 10a8 8 0 1 1 2 8M4 4v6h6"/>',move:'<path d="M3 6h6l2 3h10v11H3V6ZM9 14h9m-3-3 3 3-3 3"/>',flip:'<path d="M5 8h14l-3-3M19 16H5l3 3M19 8l-3 3M5 16l3-3"/>'
+  camera: '<path d="M4 7h3.2l1.6-2.4h6.4L16.8 7H20a1.5 1.5 0 0 1 1.5 1.5v10A1.5 1.5 0 0 1 20 20H4a1.5 1.5 0 0 1-1.5-1.5v-10A1.5 1.5 0 0 1 4 7Z"/><circle cx="12" cy="13" r="3.8"/><path d="M18 10h.01"/>',
+  album: '<rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 3v18M11 8h6M11 12h6M11 16h4"/>',
+  folder: '<path d="M3 7.5V6a1.5 1.5 0 0 1 1.5-1.5h4.6l2 2.5h8.4A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z"/><path d="M3 9.5h18"/>',
+  back: '<path d="m11 5-7 7 7 7M4.5 12H20"/>', right: '<path d="m9 5 7 7-7 7"/>', left: '<path d="m15 5-7 7 7 7"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>', minus: '<path d="M5 12h14"/>', close: '<path d="m6 6 12 12M6 18 18 6"/>',
+  check: '<path d="m5 12.5 4.5 4.5L19 7"/>', import: '<path d="M12 15V3m-4 4 4-4 4 4M4 14v5.5A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5V14"/>',
+  download: '<path d="M12 3v12m-4.5-4.5L12 15l4.5-4.5M4 17v2.5A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5V17"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m3 17 5-5 4 4 3.5-3.5L21 18"/>',
+  crop: '<path d="M7 2v15h15M2 7h15v15"/>', rotate: '<path d="M4 11a8 8 0 1 1 2.3 5.7M4 5v6h6"/>',
+  edit: '<path d="m14.5 5.5 4 4M4 20l4.5-1L20 7.5a2.1 2.1 0 0 0-3-3L5.5 15.5 4 20Z"/>',
+  trash: '<path d="M3.5 6h17M9 6V3.5h6V6M5.5 6l1 14.5h11l1-14.5M10 10.5v6M14 10.5v6"/>',
+  reset: '<path d="M4 11a8 8 0 1 1 2.3 5.7M4 5v6h6"/><path d="M12 9v3l2 1.5"/>',
+  move: '<path d="M3 7.5V6a1.5 1.5 0 0 1 1.5-1.5h4.6l2 2.5h8.4A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z"/><path d="M9 13.5h7m-2.5-2.5 2.5 2.5-2.5 2.5"/>',
+  flip: '<path d="M20 9a8 8 0 0 0-14.3-3M4 15a8 8 0 0 0 14.3 3"/><path d="M20 4v5h-5M4 20v-5h5"/>',
+  expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  share: '<circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="m8.2 10.8 7.6-4.2M8.2 13.2l7.6 4.2"/>',
+  grid: '<rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/>',
+  focus: '<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 20.5h8"/>',
+  sparkle: '<path d="M12 3c.6 4.2 2.4 6.1 6.6 6.8-4.2.7-6 2.6-6.6 6.8-.6-4.2-2.4-6.1-6.6-6.8C9.6 9.1 11.4 7.2 12 3Z"/><path d="M19 15.5c.3 1.7 1 2.5 2.6 2.8-1.6.3-2.3 1.1-2.6 2.8-.3-1.7-1-2.5-2.6-2.8 1.6-.3 2.3-1.1 2.6-2.8Z"/>',
+  zoomIn: '<circle cx="11" cy="11" r="7"/><path d="M11 8v6M8 11h6M20.5 20.5 16 16"/>',
+  zoomOut: '<circle cx="11" cy="11" r="7"/><path d="M8 11h6M20.5 20.5 16 16"/>',
+  note: '<path d="M6 3.5h9l4 4V20a.5.5 0 0 1-.5.5h-12A.5.5 0 0 1 6 20V3.5Z"/><path d="M9.5 11h6M9.5 15h4"/>',
+  install: '<path d="M12 3v11m-4-4 4 4 4-4"/><rect x="4" y="17" width="16" height="4" rx="1.5"/>'
 };
-const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name]||paths.image}</svg>`;
-const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.image}</svg>`;
+
+/* --------------------------------------------------------------------------
+   Helpers + state
+   -------------------------------------------------------------------------- */
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => crypto.randomUUID();
-const initialFolders = ['空間','光影','質感','物件','色彩','日常'].map((name,i)=>({id:'f'+i,name}));
-let db, folders=[], photos=[], view='home', folderId='f0', index=0, zoom=1, stream=null, pending=null, busy=false, cameraError='', facing='environment', routeVersion=0;
-let toastTimer, noteTimers=new Map();
-const blobURL = new Map();
-function photoSrc(p){if(p.blob){if(!blobURL.has(p.id))blobURL.set(p.id,URL.createObjectURL(p.blob));return blobURL.get(p.id)}return p.src;}
-function invalidate(p){if(blobURL.has(p.id)){URL.revokeObjectURL(blobURL.get(p.id));blobURL.delete(p.id)}}
-function toast(msg){clearTimeout(toastTimer);$('#toast').textContent=msg;$('#toast').classList.add('visible');toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),3000)}
-function openDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open('insp-camera:'+new URL('.',location.href).pathname,1);r.onupgradeneeded=()=>{r.result.createObjectStore('photos',{keyPath:'id'});r.result.createObjectStore('settings')};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
-function request(store,mode,run){return new Promise((resolve,reject)=>{const tx=db.transaction(store,mode),r=run(tx.objectStore(store));let value;r.onsuccess=()=>value=r.result;tx.oncomplete=()=>resolve(value);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)})}
-const saveFolders=()=>request('settings','readwrite',s=>s.put(folders,'folders'));
-const savePhoto=p=>request('photos','readwrite',s=>s.put(p));
-const folderPhotos = () => photos.filter(p=>p.folderId===folderId).sort((a,b)=>b.created-a.created);
-function current(){const list=folderPhotos();index=Math.max(0,Math.min(index,list.length-1));return list[index]}
-function button(action,name,label,extra=''){return `<button class="icon-btn" data-action="${action}" title="${label}" aria-label="${label}" ${extra}>${icon(name)}</button>`}
-function brand(){return '<div class="wordmark">Insp <em>Camera</em><i></i></div>'}
-function header(){return `<header class="topbar">${brand()}<span class="micro">A PLACE FOR YOUR IDEAS</span></header>`}
-function stopCamera(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
-function render(){const p=current();if(view==='home')renderHome();else if(view==='camera')renderCamera();else renderAlbum(p)}
-function navigate(next){routeVersion++;if(next!=='camera'){stopCamera();clearPending()}view=next;zoom=1;render();window.scrollTo(0,0);if(next==='camera')startCamera()}
-function renderHome(){app.innerHTML=`<div class="app-shell home"><header class="topbar home-header">${brand()}<span class="micro"><i class="status-dot"></i> YOUR POCKET INSPIRATION</span></header><section class="home-content"><div class="home-intro"><p class="eyebrow">NOTICE. CAPTURE. KEEP.</p><h1>Good ideas begin<br>with a little noticing.</h1><p>把靈感，留在看見的那一刻。</p></div><div class="entry-stack"><button class="entry" data-action="camera" aria-label="開啟相機"><span class="entry-symbol">${icon('camera')}</span><span class="entry-text"><strong>Capture</strong><small>捕捉一個靈感</small></span><span class="entry-arrow">${icon('right')}</span></button><div class="entry-divider"></div><button class="entry album-entry" data-action="album" aria-label="開啟相簿"><span class="entry-symbol">${icon('album')}</span><span class="entry-text"><strong>Collection</strong><small>重溫我的收藏</small></span><span class="entry-arrow">${icon('right')}</span></button></div></section><footer class="home-footer"><span>${String(photos.filter(p=>!p.demo).length).padStart(2,'0')} 個靈感 · ${String(folders.length).padStart(2,'0')} 個資料夾</span><span>Made for curious eyes.<br>照片與筆記儲存在此裝置 · <a class="privacy-link" href="./privacy.html">隱私</a></span></footer></div>`}
-// Divide the outer U-shaped frame by its perimeter length; one folder remains a single surface.
-function folderSegments(count){
- if(count<1)return [];
- const sides=[{key:'left',weight:1},{key:'top',weight:1},{key:'right',weight:1}];
- if(count===1)return [{side:'single',start:0,end:1}];
- if(count===2)return [{side:'left-half',start:0,end:1},{side:'right-half',start:0,end:1}];
- const per=[Math.floor(count/3),Math.floor(count/3),Math.floor(count/3)];
- for(let i=0;i<count%3;i++)per[i===0?1:0]++;
- return sides.flatMap((s,j)=>Array.from({length:per[j]},(_,i)=>({side:s.key,start:i/per[j],end:(i+1)/per[j]})));
+const pad2 = n => String(n).padStart(2, '0');
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const fmtDate = (t, opts = { year: 'numeric', month: 'short', day: 'numeric' }) => new Date(t).toLocaleDateString('zh-TW', opts);
+const haptic = pattern => { try { navigator.vibrate?.(pattern); } catch { /* unsupported */ } };
+const safeName = s => String(s || '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-').trim().slice(0, 80) || 'Insp-Camera';
+function fmtBytes(b) {
+  if (!b) return '0 MB';
+  const mb = b / 1048576;
+  if (mb < 1) return Math.max(1, Math.round(b / 1024)) + ' KB';
+  if (mb < 1024) return mb.toFixed(mb < 10 ? 1 : 0) + ' MB';
+  return (mb / 1024).toFixed(1) + ' GB';
 }
-function cellStyle(seg){const {side,start,end}=seg;if(side==='single')return '';if(side==='left-half')return 'left:0;top:0;width:50%;height:100%';if(side==='right-half')return 'left:50%;top:0;width:50%;height:100%';if(side==='top')return `left:${start*100}%;top:0;width:${(end-start)*100}%;height:17%`;return `left:${side==='left'?0:79}%;top:${17+start*83}%;width:21%;height:${(end-start)*83}%`}
-function folderCells(){const segs=folderSegments(folders.length);return folders.map((f,i)=>`<button class="folder-cell ${f.id===folderId?'selected':''}" style="${cellStyle(segs[i])}" data-action="choose-folder" data-id="${esc(f.id)}" aria-label="${pending?'儲存到':'選擇'}${esc(f.name)}" aria-pressed="${f.id===folderId}">${icon('folder')}<span>${esc(f.name)}</span><small>${photos.filter(p=>p.folderId===f.id).length} frames</small></button>`).join('')}
-function renderCamera(){app.innerHTML=`<div class="app-shell camera-page">${header()}<div class="page-heading">${button('home','back','回到首頁')}<h1>Capture</h1><span class="micro">FOLLOW YOUR CURIOSITY</span><div class="heading-actions"><button class="pill" data-action="folders">${icon('plus')}資料夾</button></div></div><div class="camera-layout"><section class="camera-phone"><div class="camera-label"><span>${pending?'ONE LITTLE MOMENT, SAVED.':'SEE SOMETHING GOOD?'}</span><span>${pending?'點選資料夾儲存':'01 — CAPTURE'}</span></div><div class="camera-frame ${folders.length===1?'single':''}">${folderCells()}<div class="viewfinder">${pending?`<img src="${pending.url}" alt="剛拍攝的靈感照片">`:`<video autoplay muted playsinline ${stream?'':'hidden'}></video><div class="camera-empty" ${stream?'hidden':''}>${icon('camera')}<p>${esc(cameraError||'開啟相機，留住眼前的靈感。')}</p><button data-action="${cameraError?'native-camera':'start-camera'}">${cameraError?'使用手機相機':'啟用相機'}</button></div>`}<span class="view-meta"><i class="live-dot"></i>${pending?'A LITTLE INSPIRATION':stream?'LIVE · INSP CAMERA':'INSP CAMERA'}</span></div></div><div class="camera-controls">${button(pending?'retake':'home',pending?'reset':'back',pending?'重新拍攝':'回到首頁')}<button class="shutter ${pending?'pending':''}" data-action="shutter" aria-label="${pending?'儲存照片':'拍照'}" ${busy?'disabled':''}><span>${pending?icon('check'):''}</span></button>${button(pending?'save-pending':'import',pending?'folder':'image',pending?'存到選取資料夾':'匯入照片')}</div><p class="camera-hint">${pending?'點選四周資料夾儲存，或按中間確認':'拍下照片，再點四周資料夾收藏'}</p></section><aside class="camera-explainer"><span class="large-number">01<span style="font-size:28px">/</span></span><p class="eyebrow" style="margin-top:20px">THE EVERYDAY IS FULL OF IDEAS</p><h2>A moment.<br>A spark.<br>Something to keep.</h2><p>一面牆的色彩、一束午後的光，<br>或是剛好路過的美好。<br>拍下來，放進屬於它的資料夾。</p><div class="step-row"><span>1</span>拍下靈感<span>2</span>點選資料夾</div><p style="font-size:10px;margin-top:35px">${folders.length} 個資料夾，隨你的靈感自由擴充。<br>照片只會儲存在這個瀏覽器。</p></aside></div></div>`;attachStream()}
-function attachStream(){if(stream&&$('video')){$('video').srcObject=stream;$('video').play().catch(()=>{})}}
-async function startCamera(){if(view!=='camera'||pending||stream)return;const version=routeVersion;try{if(!navigator.mediaDevices?.getUserMedia)throw new Error('unavailable');const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1920},height:{ideal:2560}},audio:false});if(view!=='camera'||routeVersion!==version){s.getTracks().forEach(t=>t.stop());return}stream=s;cameraError='';renderCamera()}catch(e){if(view!=='camera'||routeVersion!==version)return;cameraError=e.name==='NotAllowedError'?'相機權限未開啟，可使用手機相機或匯入照片。':'無法啟用即時相機，可使用手機相機或匯入照片。';renderCamera()}}
-async function capture(){if(busy)return;if(pending)return storePending();const video=$('video');if(!stream||!video?.videoWidth){$('#native-input').click();return}busy=true;try{const c=document.createElement('canvas');c.width=video.videoWidth;c.height=video.videoHeight;c.getContext('2d').drawImage(video,0,0);const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.92));if(!blob)throw new Error('capture');pending={blob,url:URL.createObjectURL(blob)};renderCamera()}catch{toast('拍攝失敗，請再試一次')}finally{busy=false}}
-function clearPending(){if(pending)URL.revokeObjectURL(pending.url);pending=null}
-async function storePending(id=folderId){if(!pending||busy)return;busy=true;try{const p={id:uid(),folderId:id,blob:pending.blob,created:Date.now(),note:'',name:'靈感 '+new Date().toLocaleDateString('zh-TW'),demo:false};await savePhoto(p);photos.push(p);folderId=id;clearPending();renderCamera();toast('已收藏到「'+folders.find(f=>f.id===id).name+'」')}catch{toast('儲存失敗，請檢查裝置儲存空間後重試')}finally{busy=false}}
-function renderAlbum(p=current()){const list=folderPhotos(),f=folders.find(f=>f.id===folderId)||folders[0];app.innerHTML=`<div class="app-shell album-page">${header()}<div class="page-heading">${button('home','back','回到首頁')}<h1>Collection</h1><span class="micro">YOUR LITTLE ARCHIVE</span><div class="heading-actions"><button class="pill" data-action="import">${icon('import')}匯入</button>${button('folders','folder','管理資料夾')}</div></div><section class="album-layout"><nav class="folder-tabs" aria-label="資料夾">${folders.map(f=>`<button class="folder-tab ${f.id===folderId?'active':''}" data-action="album-folder" data-id="${f.id}" aria-pressed="${f.id===folderId}">${esc(f.name)}<small>${String(photos.filter(p=>p.folderId===f.id).length).padStart(2,'0')}</small></button>`).join('')}<button class="folder-tab" data-action="new-folder" aria-label="新增資料夾">${icon('plus')}</button></nav>${p?`<div class="album-topline"><h2>${icon('folder')}${esc(f.name)}</h2><span class="micro">${String(index+1).padStart(2,'0')} / ${String(list.length).padStart(2,'0')} MOMENTS</span></div><div class="photo-workspace"><div class="photo-tools" aria-label="相片調整">${button('zoom-in','plus','放大照片')}${button('zoom-out','minus','縮小照片')}${button('crop','crop','裁切照片')}${button('rotate','rotate','旋轉照片')}${button('reset-photo','reset','還原原始照片',p.originalBlob?'':'disabled')}</div><div class="photo-stage">${p.demo?'<span class="demo-badge">SAMPLE · 示範照片</span>':''}<img id="album-image" src="${photoSrc(p)}" alt="${esc(p.name)}" style="transform:scale(${zoom})"><span class="zoom-label">${Math.round(zoom*100)}%</span></div><div class="right-rail"><button class="nav-arrow" data-action="prev" aria-label="上一張照片" ${index===0?'disabled':''}>${icon('left')}</button><span class="rail-line"></span><button class="nav-arrow" data-action="next" aria-label="下一張照片" ${index===list.length-1?'disabled':''}>${icon('right')}</button></div></div><div class="photo-navigation"><span class="photo-counter">${String(index+1).padStart(2,'0')}</span><input id="photo-range" type="range" aria-label="切換照片" min="0" max="${Math.max(0,list.length-1)}" value="${index}" ${list.length<2?'disabled':''}><span>${String(list.length).padStart(2,'0')}</span></div><div class="photo-caption"><span>${esc(p.name)}</span><time datetime="${new Date(p.created).toISOString()}">${new Date(p.created).toLocaleDateString('zh-TW',{year:'numeric',month:'short',day:'numeric'})}</time></div><div class="thumb-strip" aria-label="照片縮圖">${list.map((x,i)=>`<button class="thumb ${i===index?'active':''}" data-action="thumbnail" data-index="${i}" aria-label="第 ${i+1} 張：${esc(x.name)}" aria-pressed="${i===index}"><img src="${photoSrc(x)}" alt="" loading="lazy"></button>`).join('')}</div><section class="notes-section"><div class="notes-label"><h3>A note to remember.</h3><span id="note-status">${p.note?'已儲存於此裝置':'自動儲存'}</span></div><p>記下吸引你的細節，留給下一個創作的自己。</p><textarea id="photo-note" aria-label="照片筆記" placeholder="這個瞬間，讓你想到了什麼？">${esc(p.note||'')}</textarea><div class="photo-actions"><button class="pill" data-action="download">${icon('download')}下載照片</button><button class="pill" data-action="move">${icon('move')}移動資料夾</button><button class="pill danger" data-action="delete">${icon('trash')}刪除</button></div></section>`:`<div class="empty-album">${icon('album')}<p class="eyebrow" style="margin-top:22px">A FRESH LITTLE START</p><h2>下一個靈感，就放這裡。</h2><p>「${esc(f.name)}」還沒有照片。<br>打開相機，或從手機匯入第一個靈感。</p><button class="primary" data-action="camera">${icon('camera')}捕捉靈感</button></div>`}<p class="storage-note">所有照片與筆記均儲存在此瀏覽器，尚未提供跨裝置同步。<br>清除網站資料會移除收藏；請下載重要照片備份。<br><a class="privacy-link" href="./privacy.html">隱私與安全說明</a></p></section></div>`;if(p)bindNote(p);const active=$('.folder-tab.active');if(active)active.scrollIntoView({block:'nearest',inline:'nearest'})}
-function changeIndex(n){const list=folderPhotos();index=Math.max(0,Math.min(n,list.length-1));zoom=1;renderAlbum();}
-function bindNote(p){$('#photo-note').addEventListener('input',e=>{p.note=e.target.value;$('#note-status').textContent='儲存中…';clearTimeout(noteTimers.get(p.id));noteTimers.set(p.id,setTimeout(async()=>{try{await savePhoto(p);noteTimers.delete(p.id);if(current()?.id===p.id&&$('#note-status'))$('#note-status').textContent='已儲存於此裝置'}catch{if($('#note-status'))$('#note-status').textContent='儲存失敗，請重試';toast('筆記儲存失敗，請檢查儲存空間')}},350))})}
-function showDialog(title,body,actions=''){dialog.innerHTML=`<div class="dialog-head"><h2>${title}</h2>${button('close-dialog','close','關閉')}</div>${body}${actions?`<div class="dialog-actions">${actions}</div>`:''}`;if(!dialog.open)dialog.showModal()}
-function closeDialog(){dialog.close()}
-function showFolders(){showDialog('Room for more ideas.',`<p>給每種靈感一個位置。相機四周的格子會隨資料夾數量調整；只有一個資料夾時，外框不分格。</p><div>${folders.map(f=>`<div class="folder-manage-row">${icon('folder')}<span>${esc(f.name)}<small>${photos.filter(p=>p.folderId===f.id).length} 張照片</small></span>${button('rename-folder','edit','重新命名 '+esc(f.name),`data-id="${f.id}"`)}${button('delete-folder','trash','刪除 '+esc(f.name),`data-id="${f.id}" ${folders.length===1?'disabled':''}`)}</div>`).join('')}</div><button class="primary add-folder" data-action="new-folder">${icon('plus')}新增資料夾</button>`)}
-function editFolder(id){const f=folders.find(f=>f.id===id);showDialog(f?'Rename a little space.':'A new little space.',`<label for="folder-name">資料夾名稱</label><input id="folder-name" type="text" maxlength="24" value="${esc(f?.name||'')}" placeholder="例如：午後的光" autocomplete="off"><p id="folder-error" role="alert"></p>`,`<button class="secondary" data-action="folders">取消</button><button class="primary" data-action="save-folder" data-id="${id||''}">儲存</button>`);$('#folder-name').focus()}
-async function storeFolder(id){const name=$('#folder-name').value.trim();if(!name){$('#folder-error').textContent='請輸入資料夾名稱';return}if(folders.some(f=>f.name===name&&f.id!==id)){$('#folder-error').textContent='這個名稱已經存在';return}const old=structuredClone(folders);if(id)folders.find(f=>f.id===id).name=name;else folders.push({id:uid(),name});try{await saveFolders();render();showFolders();toast('資料夾已儲存')}catch{folders=old;toast('無法儲存資料夾，請重試')}}
-function askDeleteFolder(id){const f=folders.find(f=>f.id===id),others=folders.filter(f=>f.id!==id),n=photos.filter(p=>p.folderId===id).length;showDialog('Keep the ideas.',`<p>刪除「${esc(f.name)}」後，${n} 張照片與筆記會移至下方選取的資料夾。</p><label for="target-folder">移動到</label><select id="target-folder">${others.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>`,`<button class="secondary" data-action="folders">取消</button><button class="primary" data-action="confirm-delete-folder" data-id="${id}">移動照片並刪除資料夾</button>`)}
-async function deleteFolder(id){const target=$('#target-folder').value;const nextFolders=folders.filter(f=>f.id!==id);try{await new Promise((resolve,reject)=>{const tx=db.transaction(['settings','photos'],'readwrite');tx.objectStore('settings').put(nextFolders,'folders');for(const p of photos.filter(p=>p.folderId===id))tx.objectStore('photos').put({...p,folderId:target});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)});for(const p of photos)if(p.folderId===id)p.folderId=target;folders=nextFolders;if(folderId===id){folderId=target;index=0}render();showFolders();toast('資料夾已刪除，照片已保留')}catch{toast('操作失敗，請再試一次')}}
-async function loadImage(src){return new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=src})}
-async function canvasBlob(canvas){return new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('encoding')),'image/jpeg',.93))}
-async function normalizeFile(file){if(!['image/jpeg','image/png','image/webp','image/avif','image/heic','image/heif'].includes(file.type))throw new Error('type');if(file.size>25*1024*1024)throw new Error('size');const url=URL.createObjectURL(file);try{const im=await loadImage(url);if(im.naturalWidth*im.naturalHeight>64000000)throw new Error('dimensions');const scale=Math.min(1,2400/Math.max(im.naturalWidth,im.naturalHeight));const c=document.createElement('canvas');c.width=Math.round(im.naturalWidth*scale);c.height=Math.round(im.naturalHeight*scale);c.getContext('2d').drawImage(im,0,0,c.width,c.height);return await canvasBlob(c)}finally{URL.revokeObjectURL(url)}}
-async function importFiles(files,native=false){if(!files.length||busy)return;busy=true;let ok=0,failed=0;const target=folderId;try{for(const file of files){try{const blob=await normalizeFile(file);if(native&&view==='camera'&&files.length===1){clearPending();pending={blob,url:URL.createObjectURL(blob)};renderCamera();return}const p={id:uid(),blob,folderId:target,note:'',name:file.name.replace(/\.[^.]+$/,''),created:Date.now()+ok,demo:false};await savePhoto(p);photos.push(p);ok++}catch{failed++}}index=0;render();toast(`${ok} 張照片已存到「${folders.find(f=>f.id===target).name}」${failed?'；'+failed+' 張無法匯入，請使用支援的圖片格式，並確認單張不超過 25 MB／6400 萬像素':''}`)}finally{busy=false;$('#file-input').value='';$('#native-input').value=''}}
-async function editImage(kind){const p=current();if(!p||busy)return;busy=true;try{const im=await loadImage(photoSrc(p));const c=document.createElement('canvas');c.width=im.naturalHeight;c.height=im.naturalWidth;const ctx=c.getContext('2d');ctx.translate(c.width/2,c.height/2);ctx.rotate(Math.PI/2);ctx.drawImage(im,-im.naturalWidth/2,-im.naturalHeight/2);await updatePhotoBlob(p,await canvasBlob(c));renderAlbum();toast('照片已旋轉')}catch{toast('無法調整照片，請重試')}finally{busy=false}}
-async function updatePhotoBlob(p,blob){const updated={...p,blob,originalBlob:p.originalBlob||p.blob||await (await fetch(p.src)).blob()};await savePhoto(updated);Object.assign(p,updated);invalidate(p);zoom=1}
-let cropState=null;
-async function openCrop(){const p=current();if(!p)return;try{const im=await loadImage(photoSrc(p));cropState={p,im,ratio:1,scale:1,x:0,y:0};showDialog('Find your frame.',`<p>拖曳照片調整位置，使用拉條放大，再儲存裁切。</p><div class="crop-preview" tabindex="0" aria-label="裁切預覽，可拖曳或使用方向鍵調整照片位置"><img src="${photoSrc(p)}" alt="裁切預覽"><div class="crop-window"></div></div><div class="crop-controls"><button class="secondary active" data-action="crop-ratio" data-ratio="1">1:1</button><button class="secondary" data-action="crop-ratio" data-ratio="0.8">4:5</button><button class="secondary" data-action="crop-ratio" data-ratio="1.3333333333333333">4:3</button></div><label for="crop-zoom">縮放</label><div class="crop-controls">${icon('minus')}<input id="crop-zoom" type="range" min="1" max="3" step="0.01" value="1" aria-label="裁切縮放">${icon('plus')}</div>`,`<button class="secondary" data-action="close-dialog">取消</button><button class="primary" data-action="apply-crop">儲存裁切</button>`);updateCrop();let drag=null;const area=$('.crop-preview');area.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,ox:cropState.x,oy:cropState.y};area.setPointerCapture(e.pointerId)});area.addEventListener('pointermove',e=>{if(!drag)return;cropState.x=drag.ox+e.clientX-drag.x;cropState.y=drag.oy+e.clientY-drag.y;updateCrop()});area.addEventListener('pointerup',()=>drag=null);area.addEventListener('pointercancel',()=>drag=null);area.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();cropState.x+=e.key==='ArrowLeft'?-5:e.key==='ArrowRight'?5:0;cropState.y+=e.key==='ArrowUp'?-5:e.key==='ArrowDown'?5:0;updateCrop()}})}catch{toast('照片無法載入，請重試')}}
-function updateCrop(){if(!cropState||!$('.crop-preview'))return;const s=cropState,area=$('.crop-preview'),maxW=area.clientWidth-40,maxH=area.clientHeight-40;const w=Math.min(maxW,maxH*s.ratio),h=w/s.ratio;s.w=w;s.h=h;s.factor=Math.max(w/s.im.naturalWidth,h/s.im.naturalHeight)*s.scale;const iw=s.im.naturalWidth*s.factor,ih=s.im.naturalHeight*s.factor;s.x=Math.max(-(iw-w)/2,Math.min((iw-w)/2,s.x));s.y=Math.max(-(ih-h)/2,Math.min((ih-h)/2,s.y));const img=$('img',area);img.style.cssText=`position:absolute;width:${iw}px;height:${ih}px;max-width:none;max-height:none;transform:translate(${s.x}px,${s.y}px)`;$('.crop-window').style.cssText=`width:${w}px;height:${h}px;left:50%;top:50%;transform:translate(-50%,-50%)`}
-async function applyCrop(){if(!cropState||busy)return;busy=true;const s=cropState;try{const c=document.createElement('canvas');c.width=Math.round(s.w/s.factor);c.height=Math.round(s.h/s.factor);const sx=(s.im.naturalWidth-c.width)/2-s.x/s.factor,sy=(s.im.naturalHeight-c.height)/2-s.y/s.factor;c.getContext('2d').drawImage(s.im,sx,sy,c.width,c.height,0,0,c.width,c.height);await updatePhotoBlob(s.p,await canvasBlob(c));closeDialog();renderAlbum();toast('裁切已儲存，可隨時還原')}catch{toast('裁切儲存失敗，請重試')}finally{busy=false}}
-async function resetPhoto(){const p=current();if(!p?.originalBlob)return;try{const next={...p,blob:p.originalBlob};delete next.originalBlob;await savePhoto(next);delete p.originalBlob;Object.assign(p,next);invalidate(p);zoom=1;renderAlbum();toast('已還原原始照片')}catch{toast('還原失敗，請重試')}}
-async function downloadPhoto(){const p=current();try{const blob=p.blob||await(await fetch(p.src)).blob();const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=(p.name||'Insp-Camera')+'.jpg';a.click();setTimeout(()=>URL.revokeObjectURL(url),30000)}catch{toast('下載失敗，請再試一次')}}
-function askMove(){const p=current();showDialog('A different little space.',`<label for="move-folder">將這張照片移動到</label><select id="move-folder">${folders.map(f=>`<option value="${f.id}" ${f.id===p.folderId?'selected':''}>${esc(f.name)}</option>`).join('')}</select>`,`<button class="secondary" data-action="close-dialog">取消</button><button class="primary" data-action="confirm-move">移動</button>`)}
-function askDelete(){showDialog('Let this moment go?',`<p>確定刪除這張照片與筆記？此操作無法復原。</p>`,`<button class="secondary" data-action="close-dialog">保留</button><button class="primary" data-action="confirm-delete">刪除照片</button>`)}
-async function handle(action,el){switch(action){
- case 'home':navigate('home');break;case 'camera':navigate('camera');break;case 'album':navigate('album');break;
- case 'start-camera':await startCamera();break;case 'native-camera':$('#native-input').click();break;
- case 'shutter':await capture();break;case 'retake':clearPending();renderCamera();if(!stream)startCamera();break;
- case 'save-pending':await storePending();break;
- case 'choose-folder':if(pending)await storePending(el.dataset.id);else{folderId=el.dataset.id;renderCamera();toast('已選擇「'+folders.find(f=>f.id===folderId).name+'」')}break;
- case 'import':$('#file-input').click();break;
- case 'album-folder':folderId=el.dataset.id;index=0;zoom=1;renderAlbum();break;
- case 'prev':changeIndex(index-1);break;case 'next':changeIndex(index+1);break;case 'thumbnail':changeIndex(Number(el.dataset.index));break;
- case 'zoom-in':case 'zoom-out':zoom=Math.max(1,Math.min(3,zoom+(action==='zoom-in'?.25:-.25)));$('#album-image').style.transform=`scale(${zoom})`;$('.zoom-label').textContent=Math.round(zoom*100)+'%';break;
- case 'rotate':await editImage('rotate');break;case 'crop':await openCrop();break;case 'reset-photo':await resetPhoto();break;
- case 'crop-ratio':cropState.ratio=Number(el.dataset.ratio);cropState.x=0;cropState.y=0;document.querySelectorAll('[data-action="crop-ratio"]').forEach(b=>b.classList.toggle('active',b===el));updateCrop();break;
- case 'apply-crop':await applyCrop();break;
- case 'folders':showFolders();break;case 'new-folder':editFolder();break;case 'rename-folder':editFolder(el.dataset.id);break;case 'save-folder':await storeFolder(el.dataset.id);break;case 'delete-folder':askDeleteFolder(el.dataset.id);break;case 'confirm-delete-folder':await deleteFolder(el.dataset.id);break;
- case 'close-dialog':closeDialog();break;case 'download':await downloadPhoto();break;case 'move':askMove();break;
- case 'confirm-move':{const p=current(),target=$('#move-folder').value;const next={...p,folderId:target};await savePhoto(next);Object.assign(p,next);closeDialog();renderAlbum();toast('照片已移動');break}
- case 'delete':askDelete();break;case 'confirm-delete':{const p=current();clearTimeout(noteTimers.get(p.id));await request('photos','readwrite',s=>s.delete(p.id));photos=photos.filter(x=>x.id!==p.id);invalidate(p);closeDialog();renderAlbum();toast('照片已刪除');break}
-}}
-document.addEventListener('click',e=>{const b=e.target.closest('[data-action]');if(b&&!b.disabled)handle(b.dataset.action,b).catch(()=>toast('操作未完成，請再試一次'))});
-document.addEventListener('input',e=>{if(e.target.id==='photo-range'){const n=Number(e.target.value),p=folderPhotos()[n];if(p){$('#album-image').src=photoSrc(p);$('.photo-counter').textContent=String(n+1).padStart(2,'0')}};if(e.target.id==='crop-zoom'){cropState.scale=Number(e.target.value);updateCrop()}});
-document.addEventListener('change',e=>{if(e.target.id==='photo-range')changeIndex(Number(e.target.value))});
-$('#file-input').addEventListener('change',e=>importFiles([...e.target.files]).catch(()=>toast('匯入失敗，請重試')));
-$('#native-input').addEventListener('change',e=>importFiles([...e.target.files],true).catch(()=>toast('拍攝匯入失敗，請重試')));
-document.addEventListener('keydown',e=>{if(e.target.matches('input,textarea,select')||dialog.open)return;if(view==='album'&&['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();changeIndex(index+(e.key==='ArrowRight'?1:-1))}});
-document.addEventListener('visibilitychange',()=>{if(document.hidden){stopCamera();for(const [id,timer]of noteTimers){clearTimeout(timer);const p=photos.find(x=>x.id===id);if(p)savePhoto(p).catch(()=>{});noteTimers.delete(id)}}else if(view==='camera'&&!pending)startCamera()});
-dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog()}});
-async function init(){try{db=await openDB();folders=await request('settings','readonly',s=>s.get('folders'))||initialFolders;await saveFolders();photos=await request('photos','readonly',s=>s.getAll());const seeded=await request('settings','readonly',s=>s.get('seeded'));if(!seeded){const samples=[['architecture','轉角裡的安靜','暖色的牆面、低飽和的材質，想留住空間裡的呼吸感。',0],['light','光落下的地方','透過葉隙的光，像是不規則的筆觸。',1],['texture','水面的紋理','重複的波紋，或許能變成下一張海報的背景。',2],['objects','日常物件的線條','觀察熟悉物件的比例與輪廓。',3],['colors','一組自然的配色','從風景裡收集一組讓心安靜的色彩。',4],['street','夜色的層次','明暗交界處，也藏著值得收藏的細節。',5],['light','自然留下的光譜','換一個角度，看見另一種光。',0],['colors','日常之外的風景','這些色彩可以成為空間的靈感。',0]];for(let i=0;i<samples.length;i++){const [src,name,note,f]=samples[i],p={id:'sample-'+i,src:`./assets/${src}.jpg`,folderId:'f'+f,name,note,created:Date.now()-(i+1)*86400000,demo:true};await savePhoto(p);photos.push(p)}await request('settings','readwrite',s=>s.put(true,'seeded'))}folderId=folders[0].id;renderHome()}catch(e){app.innerHTML=`<div class="app-shell"><div class="loading">Insp <span>Camera</span></div><p class="save-alert">無法開啟裝置儲存空間。請退出私密瀏覽模式，或允許此網站儲存資料後重新整理。</p></div>`}}
+
+const MAX_FOLDERS = 12;
+const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/heif'];
+const initialFolders = ['空間', '光影', '質感', '物件', '色彩', '日常'].map((name, i) => ({ id: 'f' + i, name }));
+
+let db, folders = [], photos = [], view = 'home', folderId = 'f0', index = 0, layout = 'stage';
+let stream = null, pending = null, busy = false, cameraError = '', cameraStarting = false, facing = 'environment', multiCam = false, routeVersion = 0;
+let toastTimer, toastAction = null, afterFolderSave = null, cropState = null, dialogCloseTimer;
+let navDir = 0, suppressClickUntil = 0, installPrompt = null, persistAsked = false;
+const noteTimers = new Map();
+const blobURL = new Map();
+
+const folderById = id => folders.find(f => f.id === id);
+const folderIndex = id => folders.findIndex(f => f.id === id);
+const flavor = id => 'flavor-' + (Math.max(0, folderIndex(id)) % 6);
+const countIn = id => photos.filter(p => p.folderId === id).length;
+const byNewest = (a, b) => b.created - a.created;
+const folderPhotos = () => photos.filter(p => p.folderId === folderId).sort(byNewest);
+function current() { const list = folderPhotos(); index = clamp(index, 0, Math.max(0, list.length - 1)); return list[index]; }
+function latestPhoto() { const sorted = [...photos].sort(byNewest); return sorted.find(p => !p.demo) || sorted[0]; }
+
+function photoSrc(p) {
+  if (p.blob) {
+    if (!blobURL.has(p.id)) blobURL.set(p.id, URL.createObjectURL(p.blob));
+    return blobURL.get(p.id);
+  }
+  return p.src;
+}
+function invalidate(p) { if (blobURL.has(p.id)) { URL.revokeObjectURL(blobURL.get(p.id)); blobURL.delete(p.id); } }
+async function photoBlob(p) { return p.blob || await (await fetch(p.src)).blob(); }
+
+/* --------------------------------------------------------------------------
+   Storage
+   -------------------------------------------------------------------------- */
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const r = indexedDB.open('insp-camera:' + new URL('.', location.href).pathname, 1);
+    r.onupgradeneeded = () => { r.result.createObjectStore('photos', { keyPath: 'id' }); r.result.createObjectStore('settings'); };
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+}
+function request(store, mode, run) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, mode), r = run(tx.objectStore(store));
+    let value;
+    r.onsuccess = () => { value = r.result; };
+    tx.oncomplete = () => resolve(value);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+function transaction(stores, run) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(stores, 'readwrite');
+    run(tx);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+const getSetting = key => request('settings', 'readonly', s => s.get(key));
+const setSetting = (key, value) => request('settings', 'readwrite', s => s.put(value, key));
+const saveFolders = () => setSetting('folders', folders);
+const rememberFolder = () => setSetting('lastFolder', folderId).catch(() => {});
+const savePhoto = p => request('photos', 'readwrite', s => s.put(p));
+
+function persistStorage() {
+  if (persistAsked) return;
+  persistAsked = true;
+  Promise.resolve(navigator.storage?.persist?.()).catch(() => {});
+}
+async function updateStorageNote() {
+  const el = $('#storage-usage');
+  if (!el || !navigator.storage?.estimate) return;
+  try {
+    const { usage } = await navigator.storage.estimate();
+    const persisted = await Promise.resolve(navigator.storage.persisted?.()).catch(() => false);
+    if (el.isConnected) el.textContent = `目前約使用 ${fmtBytes(usage)}${persisted ? ' · 已啟用持久儲存' : ''}`;
+  } catch { /* estimate unavailable */ }
+}
+
+/* --------------------------------------------------------------------------
+   Feedback: toast, jelly, haptics
+   -------------------------------------------------------------------------- */
+
+function toast(msg, opts = {}) {
+  clearTimeout(toastTimer);
+  toastAction = opts.action || null;
+  toastEl.innerHTML = `<span class="toast-msg">${icon(opts.icon || 'check')}<span>${esc(msg)}</span></span>${opts.label ? `<button class="toast-btn j" data-action="toast-action">${esc(opts.label)}</button>` : ''}`;
+  toastEl.classList.toggle('has-action', !!opts.label);
+  toastEl.classList.remove('visible');
+  void toastEl.offsetWidth;
+  toastEl.classList.add('visible');
+  toastTimer = setTimeout(hideToast, opts.duration || (opts.label ? 5200 : 2800));
+}
+function hideToast() { clearTimeout(toastTimer); toastEl.classList.remove('visible'); toastAction = null; }
+const warn = msg => toast(msg, { icon: 'close' });
+
+function jelly(el) {
+  if (!el || !el.classList.contains('j') || reduced()) return;
+  el.classList.remove('jelly-play');
+  void el.offsetWidth;
+  el.classList.add('jelly-play');
+}
+document.addEventListener('animationend', e => {
+  if (e.animationName === 'jelly') e.target.classList.remove('jelly-play');
+  if (e.animationName === 'gulp') e.target.classList.remove('gulp');
+  if (e.animationName === 'shake') e.target.classList.remove('shake');
+});
+function shake(el) { if (!el) return; el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); haptic(30); }
+
+document.addEventListener('pointerdown', e => {
+  const el = e.target.closest('.j');
+  if (el && !el.disabled) el.classList.add('pressed');
+}, { passive: true });
+const release = () => $$('.j.pressed').forEach(el => el.classList.remove('pressed'));
+['pointerup', 'pointercancel', 'dragstart'].forEach(t => document.addEventListener(t, release, { passive: true }));
+document.addEventListener('pointerout', e => { if (e.target.closest?.('.j') && !e.relatedTarget?.closest?.('.j.pressed')) e.target.closest('.j').classList.remove('pressed'); }, { passive: true });
+
+/* --------------------------------------------------------------------------
+   Routing (history-aware so the phone's back button works)
+   -------------------------------------------------------------------------- */
+
+const titles = { home: 'Insp Camera', camera: 'Capture — Insp Camera', album: 'Collection — Insp Camera' };
+function routeFromHash() { const h = location.hash.slice(1); return h === 'camera' || h === 'album' ? h : 'home'; }
+function urlFor(v) { return v === 'home' ? location.pathname + location.search : '#' + v; }
+
+function go(next) {
+  if (next === view) { render(); return; }
+  if (next === 'home' && history.state?.prev === 'home' && !history.state?.viewer) { history.back(); return; }
+  history.pushState({ view: next, prev: view }, '', urlFor(next));
+  show(next);
+}
+function show(next) {
+  routeVersion++;
+  if (next !== 'camera') { stopCamera(); clearPending(); cameraStarting = false; }
+  if (dialog.open) dialog.close();
+  if (toastAction) hideToast();
+  view = next;
+  navDir = 0;
+  if (next === 'camera') cameraStarting = !stream && !pending;
+  document.body.dataset.view = next;
+  document.title = titles[next];
+  render();
+  app.firstElementChild?.classList.add('enter');
+  window.scrollTo(0, 0);
+  if (next === 'camera') startCamera();
+}
+addEventListener('popstate', e => {
+  const st = e.state || {};
+  if (viewer.open && !st.viewer) closeViewer(true);
+  const v = st.view || routeFromHash();
+  if (v !== view) show(v);
+});
+
+function render() {
+  if (view === 'home') renderHome();
+  else if (view === 'camera') renderCamera();
+  else renderAlbum();
+}
+
+function openPhoto(id) {
+  const p = photos.find(x => x.id === id);
+  if (!p) return;
+  folderId = p.folderId;
+  index = Math.max(0, folderPhotos().findIndex(x => x.id === id));
+  navDir = 0;
+  go('album');
+}
+
+/* --------------------------------------------------------------------------
+   Shared markup
+   -------------------------------------------------------------------------- */
+
+const brand = () => '<span class="wordmark">Insp <em>Camera</em><i></i></span>';
+function iconBtn(action, name, label, extra = '', cls = '') {
+  return `<button class="icon-btn j ${cls}" data-action="${action}" title="${label}" aria-label="${label}" ${extra}>${icon(name)}</button>`;
+}
+function topbar(title, sub, actions = '') {
+  return `<header class="bar">${iconBtn('home', 'back', '回到首頁')}<span class="wordmark-slot">${brand()}</span><div class="bar-title"><h1>${title}</h1><span>${sub}</span></div><div class="bar-actions">${actions}</div></header>`;
+}
+
+/* --------------------------------------------------------------------------
+   Home
+   -------------------------------------------------------------------------- */
+
+function renderHome() {
+  const mine = photos.filter(p => !p.demo).length;
+  const recent = [...photos].sort(byNewest).slice(0, 12);
+  const preview = recent.slice(0, 3);
+  app.innerHTML = `<div class="shell home">
+    <header class="home-top">${brand()}<span class="status-chip"><i></i>本機儲存 · 無需帳號</span></header>
+    <section class="hero">
+      <p class="eyebrow">Notice · Capture · Keep</p>
+      <h1>Good ideas begin<br>with a little <em>noticing.</em></h1>
+      <p class="hero-sub">把靈感，留在看見的那一刻。</p>
+    </section>
+    <section class="entries" aria-label="開始使用">
+      <button class="entry entry-capture j" data-action="camera">
+        <span class="orb">${icon('camera')}</span>
+        <span class="entry-text"><strong>Capture</strong><small>捕捉一個靈感</small></span>
+        <span class="entry-go">${icon('right')}</span>
+      </button>
+      <button class="entry entry-collection j" data-action="album">
+        <span class="mosaic ${preview.length ? '' : 'empty'}">${preview.length ? preview.map(p => `<img src="${photoSrc(p)}" alt="" loading="lazy">`).join('') : icon('album')}</span>
+        <span class="entry-text"><strong>Collection</strong><small>重溫我的收藏 · ${photos.length} 張</small></span>
+        <span class="entry-go">${icon('right')}</span>
+      </button>
+    </section>
+    ${recent.length ? `<section class="recent">
+      <div class="section-head"><h2>最近的靈感</h2><button class="link-btn" data-action="album">查看全部</button></div>
+      <div class="recent-strip">${recent.map(p => `<button class="recent-item j" data-action="open-photo" data-id="${esc(p.id)}" aria-label="查看「${esc(p.name)}」"><img src="${photoSrc(p)}" alt="" loading="lazy"><span>${esc(folderById(p.folderId)?.name || '')}</span></button>`).join('')}</div>
+    </section>` : ''}
+    <footer class="home-foot">
+      <span><b>${pad2(mine)}</b> 個靈感 · <b>${pad2(folders.length)}</b> 個資料夾</span>
+      <span>照片與筆記只存在此裝置 · <a href="./privacy.html">隱私</a>${installPrompt ? ' · <button class="link-btn" data-action="install">安裝 App</button>' : ''}</span>
+    </footer>
+  </div>`;
+}
+
+/* --------------------------------------------------------------------------
+   Capture
+   -------------------------------------------------------------------------- */
+
+// Divide the outer U-shaped frame by its perimeter length; one folder remains a single surface.
+function folderSegments(count) {
+  if (count < 1) return [];
+  if (count === 1) return [{ side: 'single', start: 0, end: 1 }];
+  if (count === 2) return [{ side: 'left-half', start: 0, end: 1 }, { side: 'right-half', start: 0, end: 1 }];
+  const sides = ['left', 'top', 'right'];
+  const per = [Math.floor(count / 3), Math.floor(count / 3), Math.floor(count / 3)];
+  for (let i = 0; i < count % 3; i++) per[i === 0 ? 1 : 0]++;
+  return sides.flatMap((side, j) => Array.from({ length: per[j] }, (_, i) => ({ side, start: i / per[j], end: (i + 1) / per[j] })));
+}
+function cellStyle({ side, start, end }) {
+  if (side === 'single') return 'inset:0';
+  if (side === 'left-half') return 'left:0;top:0;width:50%;height:100%';
+  if (side === 'right-half') return 'left:50%;top:0;width:50%;height:100%';
+  if (side === 'top') return `left:${start * 100}%;top:0;width:${(end - start) * 100}%;height:17%`;
+  return `left:${side === 'left' ? 0 : 79}%;top:${17 + start * 83}%;width:21%;height:${(end - start) * 83}%`;
+}
+function folderCells() {
+  const segs = folderSegments(folders.length);
+  return folders.map((f, i) => {
+    const n = countIn(f.id), sel = f.id === folderId;
+    return `<button class="folder-cell j flavor-${i % 6} side-${segs[i].side} ${sel ? 'selected' : ''}" style="${cellStyle(segs[i])};--i:${i}" data-action="choose-folder" data-id="${esc(f.id)}" aria-label="${pending ? '儲存到' : '選擇'}「${esc(f.name)}」，${n} 張照片" aria-pressed="${sel}">
+      <span class="juice">${i < 9 ? `<kbd>${i + 1}</kbd>` : ''}<span class="juice-check">${icon('check')}</span><span class="juice-body"><span class="juice-icon">${icon('folder')}</span><span class="juice-name">${esc(f.name)}</span><small class="juice-count">${n}</small></span></span>
+    </button>`;
+  }).join('');
+}
+function viewfinderInner() {
+  if (pending) return `<img class="pending-img" src="${pending.url}" alt="剛拍攝的照片預覽">`;
+  const video = `<video class="${facing === 'user' ? 'mirror' : ''}" autoplay muted playsinline ${stream ? '' : 'hidden'}></video>`;
+  if (stream) return `${video}<span class="vf-grid" aria-hidden="true"></span><span class="vf-corner" aria-hidden="true"></span>${multiCam ? `<button class="vf-btn j" data-action="flip-camera" aria-label="切換前後鏡頭" title="切換鏡頭">${icon('flip')}</button>` : ''}`;
+  if (cameraStarting) return `${video}<div class="vf-empty"><span class="spinner" aria-hidden="true"></span><p>正在開啟相機…</p></div>`;
+  return `${video}<div class="vf-empty">${icon('camera')}<p>${esc(cameraError || '開啟相機，留住眼前的靈感。')}</p><div class="vf-empty-actions">${cameraError
+    ? `<button class="btn-jelly sm j" data-action="native-camera">${icon('camera')}使用手機相機</button><button class="btn-ghost sm j" data-action="start-camera">重試</button>`
+    : `<button class="btn-jelly sm j" data-action="start-camera">啟用相機</button>`}</div></div>`;
+}
+function renderCamera() {
+  const f = folderById(folderId) || folders[0];
+  const last = latestPhoto();
+  const status = pending ? '<i class="pulse"></i>點選資料夾，收藏這一刻'
+    : stream ? '<i class="rec"></i>Live · See something good?'
+    : cameraStarting ? '正在開啟相機…' : 'See something good?';
+  app.innerHTML = `<div class="shell camera-page">
+    ${topbar('Capture', 'Follow your curiosity', `<button class="pill j" data-action="folders">${icon('folder')}<span>資料夾</span></button>`)}
+    <div class="camera-layout">
+      <section class="camera-main" aria-label="相機">
+        <div class="camera-status">
+          <span class="status-text ${pending ? 'is-pending' : ''}" aria-live="polite">${status}</span>
+          <span class="target-chip">存入 <i class="chip-dot ${flavor(f.id)}" id="target-dot"></i><b id="target-name">${esc(f.name)}</b></span>
+        </div>
+        <div class="camera-frame ${pending ? 'is-pending' : ''}">
+          ${folderCells()}
+          <div class="viewfinder">
+            ${viewfinderInner()}
+            <span class="vf-flash" aria-hidden="true"></span>
+            <span class="vf-meta"><i class="live-dot"></i>${pending ? 'A LITTLE INSPIRATION' : stream ? (facing === 'user' ? 'FRONT' : 'BACK') + ' · INSP CAMERA' : 'INSP CAMERA'}</span>
+          </div>
+        </div>
+        <div class="camera-controls">
+          ${pending
+            ? `<button class="ctrl j" data-action="retake" aria-label="重新拍攝"><span class="ctrl-face">${icon('reset')}</span>重拍</button>`
+            : `<button class="ctrl j" data-action="camera-last" aria-label="${last ? '查看最新的照片' : '開啟收藏'}"><span class="ctrl-face ${last ? 'thumb' : ''}">${last ? `<img src="${photoSrc(last)}" alt="">` : icon('album')}</span>收藏</button>`}
+          <button class="shutter j ${pending ? 'is-pending' : ''}" data-action="shutter" aria-label="${pending ? `儲存到「${esc(f.name)}」` : '拍照'}"><span class="shutter-core">${pending ? icon('check') : ''}</span></button>
+          ${pending
+            ? `<button class="ctrl j" data-action="pending-new-folder" aria-label="存到新的資料夾" ${folders.length >= MAX_FOLDERS ? 'disabled' : ''}><span class="ctrl-face">${icon('plus')}</span>新資料夾</button>`
+            : `<button class="ctrl j" data-action="import" aria-label="從裝置匯入照片"><span class="ctrl-face">${icon('image')}</span>匯入</button>`}
+        </div>
+        <p class="camera-hint" id="camera-hint">${pending ? `點四周的果汁資料夾直接收藏，或按 ✓ 存入「<b>${esc(f.name)}</b>」` : '拍下照片，再點四周的資料夾收藏'}</p>
+      </section>
+      <aside class="camera-side">
+        <span class="side-num">01<i>/</i></span>
+        <p class="eyebrow" style="margin-top:20px">The everyday is full of ideas</p>
+        <h2>A moment.<br>A spark.<br><em>Something to keep.</em></h2>
+        <p>一面牆的色彩、一束午後的光，或是剛好路過的美好。拍下來，放進屬於它的資料夾。</p>
+        <ol class="steps"><li><span>1</span>拍下靈感</li><li><span>2</span>點選四周的果汁資料夾</li><li><span>3</span>到 Collection 重溫與寫筆記</li></ol>
+        <div class="shortcuts"><p class="eyebrow">鍵盤快捷鍵</p><dl>
+          <dt><kbd>Space</kbd></dt><dd>拍照 / 存入選取的資料夾</dd>
+          <dt><kbd>1</kbd> – <kbd>${Math.min(9, folders.length)}</kbd></dt><dd>選擇或直接存入資料夾</dd>
+          <dt><kbd>Esc</kbd></dt><dd>重新拍攝</dd>
+        </dl></div>
+        <p class="side-foot">${folders.length} 個資料夾，隨你的靈感自由擴充。照片只會儲存在這個瀏覽器。</p>
+      </aside>
+    </div>
+  </div>`;
+  attachStream();
+}
+function attachStream() {
+  const video = $('.viewfinder video');
+  if (stream && video) { video.srcObject = stream; video.play().catch(() => {}); }
+}
+function stopCamera() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } }
+function clearPending() { if (pending) URL.revokeObjectURL(pending.url); pending = null; }
+
+async function startCamera() {
+  if (view !== 'camera' || pending || stream) { cameraStarting = false; return; }
+  const version = routeVersion;
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('unavailable');
+    const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 2560 } }, audio:false });
+    if (view !== 'camera' || routeVersion !== version || pending || stream) { s.getTracks().forEach(t => t.stop()); return; }
+    stream = s;
+    cameraError = '';
+    s.getVideoTracks()[0]?.addEventListener('ended', () => {
+      if (stream !== s) return;
+      stream = null;
+      cameraError = '相機連線已中斷，請重試或改用匯入照片。';
+      if (view === 'camera') renderCamera();
+    });
+    try { multiCam = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput').length > 1; } catch { multiCam = false; }
+  } catch (e) {
+    if (view !== 'camera' || routeVersion !== version) return;
+    cameraError = e.name === 'NotAllowedError' ? '相機權限未開啟。你可以改用手機相機，或匯入照片。'
+      : e.name === 'NotFoundError' ? '找不到可用的相機，可以改用匯入照片。'
+      : '無法啟用即時相機，可使用手機相機或匯入照片。';
+  } finally {
+    if (view === 'camera' && routeVersion === version) { cameraStarting = false; renderCamera(); }
+  }
+}
+async function flipCamera() {
+  facing = facing === 'environment' ? 'user' : 'environment';
+  stopCamera();
+  cameraStarting = true;
+  renderCamera();
+  haptic(8);
+  await startCamera();
+}
+function flash() {
+  const f = $('.vf-flash');
+  if (!f || reduced()) return;
+  f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+}
+async function capture() {
+  if (busy) return;
+  if (pending) return storePending();
+  const video = $('.viewfinder video');
+  if (!stream || !video?.videoWidth) { $('#native-input').click(); return; }
+  busy = true;
+  try {
+    flash();
+    haptic(12);
+    const c = document.createElement('canvas');
+    c.width = video.videoWidth; c.height = video.videoHeight;
+    const ctx = c.getContext('2d');
+    if (facing === 'user') { ctx.translate(c.width, 0); ctx.scale(-1, 1); }
+    ctx.drawImage(video, 0, 0);
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', .92));
+    if (!blob) throw new Error('capture');
+    pending = { blob, url: URL.createObjectURL(blob) };
+    busy = false;
+    renderCamera();
+  } catch {
+    warn('拍攝失敗，請再試一次');
+  } finally { busy = false; }
+}
+function flyTo(fromEl, toEl) {
+  if (!fromEl || !toEl || reduced() || !fromEl.animate) return Promise.resolve();
+  const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
+  const ghost = document.createElement('img');
+  ghost.src = fromEl.src; ghost.alt = ''; ghost.className = 'fly-ghost';
+  Object.assign(ghost.style, { left: a.left + 'px', top: a.top + 'px', width: a.width + 'px', height: a.height + 'px' });
+  document.body.append(ghost);
+  const dx = b.left + b.width / 2 - (a.left + a.width / 2), dy = b.top + b.height / 2 - (a.top + a.height / 2);
+  const k = Math.max(.08, Math.min(b.width / a.width, b.height / a.height) * .7);
+  return ghost.animate([
+    { transform: 'translate(0,0) scale(1)', borderRadius: '18px', opacity: 1 },
+    { transform: `translate(${dx * .35}px,${dy * .35 - 30}px) scale(${.55 + k * .3})`, borderRadius: '28px', opacity: 1, offset: .4 },
+    { transform: `translate(${dx}px,${dy}px) scale(${k})`, borderRadius: '50%', opacity: .1 }
+  ], { duration: 560, easing: 'cubic-bezier(.45,0,.2,1)' }).finished.catch(() => {}).then(() => ghost.remove());
+}
+function gulp(id) {
+  const cell = $(`.folder-cell[data-id="${CSS.escape(id)}"]`);
+  if (!cell || reduced()) return;
+  cell.classList.remove('jelly-play', 'gulp'); void cell.offsetWidth; cell.classList.add('gulp');
+  const s = document.createElement('i'); s.className = 'splash';
+  $('.juice', cell).append(s);
+  setTimeout(() => s.remove(), 800);
+}
+async function storePending(id = folderId) {
+  if (!pending || busy) return;
+  const f = folderById(id);
+  if (!f) return;
+  busy = true;
+  try {
+    const p = { id: uid(), folderId: id, blob: pending.blob, created: Date.now(), note: '', name: '靈感 ' + new Date().toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }), demo: false };
+    await savePhoto(p);
+    photos.push(p);
+    haptic([8, 40, 16]);
+    await flyTo($('.viewfinder .pending-img'), $(`.folder-cell[data-id="${CSS.escape(id)}"] .juice`));
+    folderId = id;
+    clearPending();
+    busy = false;
+    if (view !== 'camera') return;
+    renderCamera();
+    gulp(id);
+    toast(`已收藏到「${f.name}」`, { label: '查看', action: () => openPhoto(p.id) });
+    persistStorage();
+    if (!stream && !cameraError) { cameraStarting = true; renderCamera(); startCamera(); }
+  } catch {
+    warn('儲存失敗，請檢查裝置儲存空間後重試');
+  } finally { busy = false; }
+}
+function selectFolder(id) {
+  const f = folderById(id);
+  if (!f) return;
+  folderId = id;
+  rememberFolder();
+  haptic(6);
+  $$('.folder-cell').forEach(c => { const on = c.dataset.id === id; c.classList.toggle('selected', on); c.setAttribute('aria-pressed', on); });
+  const name = $('#target-name'); if (name) name.textContent = f.name;
+  const dot = $('#target-dot'); if (dot) dot.className = 'chip-dot ' + flavor(id);
+}
+
+/* --------------------------------------------------------------------------
+   Collection
+   -------------------------------------------------------------------------- */
+
+function renderAlbum() {
+  const list = folderPhotos(), p = current(), f = folderById(folderId) || folders[0];
+  const demoCount = photos.filter(x => x.demo).length;
+  const body = !p ? emptyHTML(f) : layout === 'grid' ? gridHTML(list) : `<div class="album-body">${stageHTML(p, list)}${detailsHTML(p)}</div>`;
+  app.innerHTML = `<div class="shell album-page">
+    ${topbar('Collection', `${photos.length} moments · ${folders.length} folders`, `<button class="pill pill-accent j" data-action="import">${icon('import')}<span>匯入</span></button>${iconBtn('folders', 'folder', '管理資料夾')}`)}
+    <section class="album">
+      <nav class="chips" aria-label="資料夾">${folders.map((x, i) => `<button class="chip j ${x.id === folderId ? 'active' : ''}" data-action="album-folder" data-id="${esc(x.id)}" aria-pressed="${x.id === folderId}"><i class="chip-dot flavor-${i % 6}"></i>${esc(x.name)}<small>${pad2(countIn(x.id))}</small></button>`).join('')}${folders.length < MAX_FOLDERS ? `<button class="chip chip-add j" data-action="new-folder" aria-label="新增資料夾" title="新增資料夾">${icon('plus')}</button>` : ''}</nav>
+      ${demoCount ? `<div class="demo-banner">${icon('sparkle')}<span>收藏中有 ${demoCount} 張示範照片，隨時可以一鍵清除。</span><button class="link-btn" data-action="clear-samples">清除示範</button></div>` : ''}
+      <div class="album-head">
+        <h2><span>${esc(f.name)}</span><small>${pad2(list.length)} moments</small></h2>
+        ${list.length ? `<div class="seg" role="group" aria-label="檢視方式">
+          <button class="seg-btn ${layout === 'stage' ? 'active' : ''}" data-action="layout" data-layout="stage" aria-pressed="${layout === 'stage'}" title="單張檢視">${icon('focus')}<span>單張</span></button>
+          <button class="seg-btn ${layout === 'grid' ? 'active' : ''}" data-action="layout" data-layout="grid" aria-pressed="${layout === 'grid'}" title="格狀檢視">${icon('grid')}<span>格狀</span></button>
+        </div>` : ''}
+      </div>
+      ${body}
+      <p class="storage-note">所有照片與筆記均儲存在此瀏覽器，尚未提供跨裝置同步。<br>清除網站資料會移除收藏；請下載重要照片備份。<br><span id="storage-usage"></span><br><a href="./privacy.html">隱私與安全說明</a></p>
+    </section>
+  </div>`;
+  if (p && layout === 'stage') { bindNote(p); bindStage(); centerIn($('.thumbs'), $('.thumb.active')); }
+  centerIn($('.chips'), $('.chip.active'));
+  updateStorageNote();
+}
+function centerIn(container, el) {
+  if (!container || !el) return;
+  container.scrollLeft = el.offsetLeft - container.clientWidth / 2 + el.clientWidth / 2;
+}
+function stageHTML(p, list) {
+  const dirClass = navDir > 0 ? 'from-right' : navDir < 0 ? 'from-left' : 'fade';
+  const pct = list.length > 1 ? (index / (list.length - 1)) * 100 : 0;
+  const tool = (action, name, label, extra = '', cls = '') => `<button class="tool j ${cls}" data-action="${action}" aria-label="${label}" title="${label}" ${extra}>${icon(name)}<span>${label}</span></button>`;
+  return `<div class="stage-wrap">
+    <div class="stage" id="stage">
+      ${p.demo ? '<span class="stage-chip stage-badge">SAMPLE · 示範</span>' : ''}
+      <button class="stage-open" data-action="open-viewer" aria-label="放大檢視「${esc(p.name)}」"><img id="album-image" class="stage-img ${dirClass}" src="${photoSrc(p)}" alt="${esc(p.name)}" draggable="false"></button>
+      <button class="stage-nav prev j" data-action="prev" aria-label="上一張照片" ${index === 0 ? 'disabled' : ''}>${icon('left')}</button>
+      <button class="stage-nav next j" data-action="next" aria-label="下一張照片" ${index === list.length - 1 ? 'disabled' : ''}>${icon('right')}</button>
+      <span class="stage-chip stage-count">${pad2(index + 1)} / ${pad2(list.length)}</span>
+      <span class="stage-chip stage-hint">${icon('expand')}點擊放大</span>
+    </div>
+    <div class="toolbar" role="toolbar" aria-label="照片工具">
+      ${tool('open-viewer', 'expand', '放大', '', 'accent')}
+      ${tool('crop', 'crop', '裁切')}
+      ${tool('rotate', 'rotate', '旋轉')}
+      ${tool('reset-photo', 'reset', '還原', p.originalBlob ? '' : 'disabled')}
+      ${navigator.share ? tool('share', 'share', '分享') : ''}
+      ${tool('download', 'download', '下載')}
+    </div>
+    ${list.length > 1 ? `<div class="scrub"><span class="photo-counter">${pad2(index + 1)}</span><input id="photo-range" type="range" aria-label="切換照片" min="0" max="${list.length - 1}" value="${index}" style="--p:${pct}%"><span>${pad2(list.length)}</span></div>` : ''}
+    <div class="thumbs" aria-label="照片縮圖">${list.map((x, i) => `<button class="thumb ${i === index ? 'active' : ''}" data-action="thumbnail" data-index="${i}" aria-label="第 ${i + 1} 張：${esc(x.name)}" aria-pressed="${i === index}"><img src="${photoSrc(x)}" alt="" loading="lazy"></button>`).join('')}</div>
+  </div>`;
+}
+function detailsHTML(p) {
+  const f = folderById(p.folderId);
+  return `<section class="details" aria-label="照片資訊與筆記">
+    <div class="details-head">
+      <h3 class="photo-title"><button class="title-btn" data-action="rename-photo" aria-label="重新命名「${esc(p.name)}」" title="重新命名"><span>${esc(p.name)}</span>${icon('edit')}</button></h3>
+      <time datetime="${new Date(p.created).toISOString()}"><i class="chip-dot ${flavor(p.folderId)}"></i>${esc(f?.name || '')} · ${fmtDate(p.created, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}</time>
+    </div>
+    <div class="notes">
+      <div class="notes-label"><h4>A note to remember.</h4><span id="note-status" class="note-status">${p.note ? icon('check') + '已儲存' : '自動儲存'}</span></div>
+      <p>記下吸引你的細節，留給下一個創作的自己。</p>
+      <textarea id="photo-note" aria-label="照片筆記" maxlength="5000" placeholder="這個瞬間，讓你想到了什麼？">${esc(p.note || '')}</textarea>
+      <div class="notes-foot"><span id="note-count">${(p.note || '').length} 字</span></div>
+    </div>
+    <div class="photo-actions">
+      <button class="pill j" data-action="move">${icon('move')}移動資料夾</button>
+      <button class="pill danger j" data-action="delete">${icon('trash')}刪除</button>
+    </div>
+  </section>`;
+}
+function gridHTML(list) {
+  return `<div class="grid">${list.map((x, i) => `<button class="tile j" data-action="view" data-index="${i}" aria-label="放大檢視第 ${i + 1} 張：${esc(x.name)}"><span class="tile-in" style="--d:${Math.min(i, 24) * 22}ms"><img src="${photoSrc(x)}" alt="" loading="lazy" draggable="false"><span class="tile-meta"><b>${esc(x.name)}</b><time>${fmtDate(x.created, { month: 'short', day: 'numeric' })}</time></span>${x.note ? `<i class="tile-flag" title="有筆記">${icon('note')}</i>` : ''}${x.demo ? '<i class="tile-demo">SAMPLE</i>' : ''}</span></button>`).join('')}</div>`;
+}
+function emptyHTML(f) {
+  return `<div class="empty">
+    <span class="empty-orb">${icon('album')}</span>
+    <p class="eyebrow">A fresh little start</p>
+    <h2>下一個靈感，就放這裡。</h2>
+    <p>「${esc(f.name)}」還沒有照片。<br>打開相機，或從裝置匯入第一個靈感。</p>
+    <div class="empty-actions"><button class="btn-jelly j" data-action="camera">${icon('camera')}捕捉靈感</button><button class="btn-ghost j" data-action="import">${icon('import')}匯入照片</button></div>
+    <p class="drop-hint">也可以直接把圖片拖曳到視窗中</p>
+  </div>`;
+}
+function changeIndex(n) {
+  const list = folderPhotos();
+  n = clamp(n, 0, list.length - 1);
+  if (n === index || !list.length) return;
+  navDir = n > index ? 1 : -1;
+  index = n;
+  renderAlbum();
+  navDir = 0;
+}
+function bindNote(p) {
+  const area = $('#photo-note');
+  area.addEventListener('input', () => {
+    p.note = area.value;
+    const status = $('#note-status');
+    status.textContent = '儲存中…';
+    status.classList.add('saving');
+    $('#note-count').textContent = area.value.length + ' 字';
+    clearTimeout(noteTimers.get(p.id));
+    noteTimers.set(p.id, setTimeout(async () => {
+      try {
+        await savePhoto(p);
+        noteTimers.delete(p.id);
+        const s = $('#note-status');
+        if (current()?.id === p.id && s) { s.innerHTML = icon('check') + '已儲存'; s.classList.remove('saving'); }
+      } catch {
+        const s = $('#note-status');
+        if (s) { s.textContent = '儲存失敗，請重試'; s.classList.remove('saving'); }
+        warn('筆記儲存失敗，請檢查儲存空間');
+      }
+    }, 400));
+  });
+}
+function flushNotes() {
+  for (const [id, timer] of noteTimers) {
+    clearTimeout(timer);
+    const p = photos.find(x => x.id === id);
+    if (p) savePhoto(p).catch(() => {});
+    noteTimers.delete(id);
+  }
+}
+// Horizontal swipe on the stage moves between photos; a tap opens the viewer.
+function bindStage() {
+  const stage = $('#stage'), img = $('#album-image');
+  if (!stage || !img) return;
+  let s = null;
+  stage.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' || e.target.closest('.stage-nav')) return;
+    s = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), drag: false };
+  });
+  stage.addEventListener('pointermove', e => {
+    if (!s || e.pointerId !== s.id) return;
+    const dx = e.clientX - s.x, dy = e.clientY - s.y;
+    if (!s.drag && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) s.drag = true;
+    if (s.drag) {
+      const edge = (dx > 0 && index === 0) || (dx < 0 && index === folderPhotos().length - 1);
+      img.style.transition = 'none';
+      img.style.transform = `translateX(${dx * (edge ? .25 : .6)}px) rotate(${dx * .01}deg)`;
+    }
+  });
+  const end = e => {
+    if (!s || e.pointerId !== s.id) return;
+    const dx = e.clientX - s.x, v = Math.abs(dx) / (performance.now() - s.t);
+    const dragged = s.drag;
+    s = null;
+    img.style.transition = '';
+    img.style.transform = '';
+    if (!dragged) return;
+    suppressClickUntil = performance.now() + 400;
+    if (e.type === 'pointerup' && (Math.abs(dx) > 60 || v > .45)) { haptic(6); changeIndex(index + (dx < 0 ? 1 : -1)); }
+  };
+  stage.addEventListener('pointerup', end);
+  stage.addEventListener('pointercancel', end);
+}
+
+/* --------------------------------------------------------------------------
+   Viewer (tap a photo to see it full screen: pinch, double-tap, swipe)
+   -------------------------------------------------------------------------- */
+
+const viewer = { open: false, list: [], i: 0, start: 0, s: 1, x: 0, y: 0, pointers: new Map(), g: null, lastTap: null, tapTimer: 0, busy: false, returnFocus: null };
+let vEl, vImg, vStage;
+
+function buildViewer() {
+  vEl = document.createElement('div');
+  vEl.className = 'viewer';
+  vEl.hidden = true;
+  vEl.setAttribute('role', 'dialog');
+  vEl.setAttribute('aria-modal', 'true');
+  vEl.setAttribute('aria-label', '照片檢視器');
+  vEl.innerHTML = `<div class="viewer-backdrop"></div>
+    <div class="viewer-stage" id="v-stage"><img id="v-img" alt="" draggable="false"></div>
+    <div class="viewer-top">
+      <div class="viewer-title"><strong id="v-name"></strong><span id="v-meta"></span></div>
+      <button class="v-btn j" data-action="lb-zoom" id="v-zoom-btn" aria-label="放大" title="放大">${icon('zoomIn')}</button>
+      ${navigator.share ? `<button class="v-btn j" data-action="lb-share" aria-label="分享" title="分享">${icon('share')}</button>` : ''}
+      <button class="v-btn j" data-action="lb-download" aria-label="下載" title="下載">${icon('download')}</button>
+      <button class="v-btn j" data-action="lb-edit" aria-label="筆記與編輯" title="筆記與編輯">${icon('edit')}</button>
+      <button class="v-btn close j" data-action="lb-close" id="v-close" aria-label="關閉檢視器" title="關閉 (Esc)">${icon('close')}</button>
+    </div>
+    <button class="v-btn viewer-nav prev j" data-action="lb-prev" aria-label="上一張">${icon('left')}</button>
+    <button class="v-btn viewer-nav next j" data-action="lb-next" aria-label="下一張">${icon('right')}</button>
+    <div class="viewer-bottom"><span class="v-count" id="v-count"></span><span class="viewer-hint" id="v-hint"></span><span class="v-zoom" id="v-zoom"></span></div>`;
+  document.body.append(vEl);
+  vImg = $('#v-img', vEl);
+  vStage = $('#v-stage', vEl);
+  $('#v-hint', vEl).textContent = matchMedia('(hover: none)').matches ? '雙擊放大 · 左右滑動切換 · 下滑關閉' : '雙擊或滾輪縮放 · ← → 切換 · Esc 關閉';
+  vStage.addEventListener('pointerdown', vDown);
+  vStage.addEventListener('pointermove', vMove);
+  vStage.addEventListener('pointerup', vUp);
+  vStage.addEventListener('pointercancel', vUp);
+  vStage.addEventListener('wheel', e => { e.preventDefault(); vZoomTo(viewer.s * Math.exp(-e.deltaY * (e.ctrlKey ? .01 : .0025)), e.clientX, e.clientY, false); }, { passive: false });
+  addEventListener('resize', () => { if (viewer.open) { vClamp(); vApply(false); } });
+}
+function vRect() { return vStage.getBoundingClientRect(); }
+function vApply(animate) {
+  vImg.style.transition = animate && !reduced() ? 'transform .32s cubic-bezier(.2,.8,.2,1)' : 'none';
+  vImg.style.transform = `translate3d(${viewer.x}px,${viewer.y}px,0) scale(${viewer.s})`;
+  const zoomed = viewer.s > 1.01;
+  vEl.classList.toggle('zoomed', zoomed);
+  $('#v-zoom').textContent = zoomed ? Math.round(viewer.s * 100) + '%' : '';
+  const btn = $('#v-zoom-btn');
+  btn.innerHTML = icon(zoomed ? 'zoomOut' : 'zoomIn');
+  btn.setAttribute('aria-label', zoomed ? '縮小' : '放大');
+}
+function vClamp() {
+  const r = vRect(), w = vImg.clientWidth * viewer.s, h = vImg.clientHeight * viewer.s;
+  const bx = Math.max(0, (w - r.width) / 2), by = Math.max(0, (h - r.height) / 2);
+  viewer.x = clamp(viewer.x, -bx, bx);
+  viewer.y = clamp(viewer.y, -by, by);
+}
+function vZoomTo(ns, cx, cy, animate = true) {
+  const r = vRect();
+  if (cx == null) { cx = r.left + r.width / 2; cy = r.top + r.height / 2; }
+  const px = cx - (r.left + r.width / 2), py = cy - (r.top + r.height / 2);
+  ns = clamp(ns, 1, 5);
+  const k = ns / viewer.s;
+  viewer.x = px - (px - viewer.x) * k;
+  viewer.y = py - (py - viewer.y) * k;
+  viewer.s = ns;
+  if (ns === 1) { viewer.x = 0; viewer.y = 0; }
+  vClamp();
+  vApply(animate);
+}
+function vToggleZoom(cx, cy) { if (viewer.s > 1.01) vZoomTo(1); else vZoomTo(2.5, cx, cy); haptic(6); }
+function vResetZoom() { viewer.s = 1; viewer.x = 0; viewer.y = 0; }
+
+function vDown(e) {
+  if (e.button > 0) return;
+  vStage.setPointerCapture(e.pointerId);
+  viewer.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (viewer.pointers.size === 1) {
+    viewer.g = { mode: null, sx: e.clientX, sy: e.clientY, x0: viewer.x, y0: viewer.y, t: performance.now(), moved: false, type: e.pointerType, onImage: e.target === vImg };
+  } else if (viewer.pointers.size === 2) {
+    const [a, b] = [...viewer.pointers.values()], r = vRect();
+    clearTimeout(viewer.tapTimer);
+    viewer.lastTap = null;
+    viewer.g = { mode: 'pinch', d0: dist(a, b) || 1, s0: viewer.s, mx0: (a.x + b.x) / 2 - (r.left + r.width / 2), my0: (a.y + b.y) / 2 - (r.top + r.height / 2), x0: viewer.x, y0: viewer.y, moved: true };
+  }
+}
+function vMove(e) {
+  if (!viewer.pointers.has(e.pointerId)) return;
+  viewer.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const g = viewer.g;
+  if (!g || viewer.busy) return;
+  if (g.mode === 'pinch') {
+    if (viewer.pointers.size < 2) return;
+    const [a, b] = [...viewer.pointers.values()], r = vRect();
+    const mx = (a.x + b.x) / 2 - (r.left + r.width / 2), my = (a.y + b.y) / 2 - (r.top + r.height / 2);
+    const ns = clamp(g.s0 * dist(a, b) / g.d0, .7, 6);
+    viewer.x = mx - ns * (g.mx0 - g.x0) / g.s0;
+    viewer.y = my - ns * (g.my0 - g.y0) / g.s0;
+    viewer.s = ns;
+    vApply(false);
+    return;
+  }
+  const dx = e.clientX - g.sx, dy = e.clientY - g.sy;
+  if (!g.moved && Math.hypot(dx, dy) < 8) return;
+  g.moved = true;
+  if (viewer.s > 1.01) { g.mode = 'pan'; viewer.x = g.x0 + dx; viewer.y = g.y0 + dy; vClamp(); vApply(false); return; }
+  if (!g.mode) g.mode = Math.abs(dx) > Math.abs(dy) ? 'swipe' : dy > 0 ? 'dismiss' : 'none';
+  if (g.mode === 'swipe') {
+    const edge = (dx > 0 && viewer.i === 0) || (dx < 0 && viewer.i === viewer.list.length - 1);
+    viewer.x = edge ? dx * .3 : dx; viewer.y = 0;
+    vApply(false);
+  } else if (g.mode === 'dismiss') {
+    const y = Math.max(0, dy), k = 1 - Math.min(1, y / 600) * .3;
+    vImg.style.transition = 'none';
+    vImg.style.transform = `translate3d(${dx * .5}px,${y}px,0) scale(${k})`;
+    vEl.style.setProperty('--dim', String(1 - Math.min(.85, y / 360)));
+    vEl.classList.add('chrome-off');
+  }
+}
+function vUp(e) {
+  if (!viewer.pointers.has(e.pointerId)) return;
+  viewer.pointers.delete(e.pointerId);
+  const g = viewer.g;
+  if (!g) return;
+  if (g.mode === 'pinch') {
+    if (viewer.pointers.size === 1) {
+      const [p] = [...viewer.pointers.values()];
+      viewer.g = { mode: 'pan', sx: p.x, sy: p.y, x0: viewer.x, y0: viewer.y, t: performance.now(), moved: true };
+    } else if (!viewer.pointers.size) viewer.g = null;
+    if (viewer.s < 1) vResetZoom();
+    if (viewer.s > 5) viewer.s = 5;
+    vClamp(); vApply(true);
+    return;
+  }
+  if (viewer.pointers.size) return;
+  viewer.g = null;
+  const dx = e.clientX - g.sx, dy = e.clientY - g.sy, dt = Math.max(1, performance.now() - g.t);
+  if (e.type === 'pointercancel') { if (viewer.s <= 1.01) { vResetZoom(); vApply(true); } vEl.style.setProperty('--dim', '1'); return; }
+  if (!g.moved) { vTap(e, g); return; }
+  if (g.mode === 'swipe') {
+    const dir = dx < 0 ? 1 : -1;
+    if ((Math.abs(dx) > vRect().width * .18 || Math.abs(dx) / dt > .5) && viewer.list[viewer.i + dir]) { vGo(dir); return; }
+    viewer.x = 0; vApply(true);
+  } else if (g.mode === 'dismiss') {
+    if (dy > 110 || dy / dt > .6) { closeViewer(); return; }
+    vResetZoom(); vApply(true);
+    vEl.style.setProperty('--dim', '1');
+    vEl.classList.remove('chrome-off');
+  }
+}
+function vTap(e, g) {
+  const now = performance.now();
+  if (viewer.lastTap && now - viewer.lastTap.t < 300 && Math.hypot(e.clientX - viewer.lastTap.x, e.clientY - viewer.lastTap.y) < 40) {
+    clearTimeout(viewer.tapTimer);
+    viewer.lastTap = null;
+    vToggleZoom(e.clientX, e.clientY);
+    return;
+  }
+  viewer.lastTap = { t: now, x: e.clientX, y: e.clientY };
+  clearTimeout(viewer.tapTimer);
+  viewer.tapTimer = setTimeout(() => {
+    viewer.lastTap = null;
+    if (g.type === 'mouse' && !g.onImage && viewer.s <= 1.01) closeViewer();
+    else vEl.classList.toggle('chrome-off');
+  }, 280);
+}
+function vUpdateChrome() {
+  const p = viewer.list[viewer.i], n = viewer.list.length;
+  $('#v-name').textContent = p.name;
+  $('#v-meta').textContent = `${folderById(p.folderId)?.name || ''} · ${fmtDate(p.created)}${p.demo ? ' · 示範照片' : ''}`;
+  $('#v-count').textContent = `${pad2(viewer.i + 1)} / ${pad2(n)}`;
+  $('[data-action="lb-prev"]', vEl).disabled = viewer.i === 0;
+  $('[data-action="lb-next"]', vEl).disabled = viewer.i === n - 1;
+  for (const d of [-1, 1]) { const q = viewer.list[viewer.i + d]; if (q) { const im = new Image(); im.src = photoSrc(q); } }
+}
+function vLoad() {
+  const p = viewer.list[viewer.i];
+  vResetZoom();
+  vApply(false);
+  vImg.src = photoSrc(p);
+  vImg.alt = p.name;
+  vUpdateChrome();
+}
+// Map the viewer image's untransformed box onto another element's rectangle.
+function vTransformFor(rect) {
+  const r = vRect(), w = vImg.clientWidth || 1, h = vImg.clientHeight || 1;
+  const k = Math.max(rect.width / w, rect.height / h);
+  const tx = rect.left + rect.width / 2 - (r.left + r.width / 2), ty = rect.top + rect.height / 2 - (r.top + r.height / 2);
+  return `translate3d(${tx}px,${ty}px,0) scale(${k})`;
+}
+function sourceImage() {
+  if (view !== 'album') return null;
+  const el = layout === 'grid' ? $(`.tile[data-index="${viewer.i}"] img`) : $('#album-image');
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return r.width && r.bottom > 0 && r.top < innerHeight ? r : null;
+}
+async function openViewer(i = index) {
+  const list = folderPhotos();
+  if (!list.length || viewer.open) return;
+  if (!vEl) buildViewer();
+  viewer.list = list;
+  viewer.i = viewer.start = clamp(i, 0, list.length - 1);
+  viewer.open = true;
+  viewer.returnFocus = document.activeElement;
+  vEl.classList.remove('chrome-off');
+  vEl.style.setProperty('--dim', '1');
+  vEl.hidden = false;
+  document.documentElement.classList.add('no-scroll');
+  history.pushState({ ...(history.state || {}), viewer: true }, '');
+  vLoad();
+  $('#v-close').focus({ preventScroll: true });
+  const from = sourceImage();
+  requestAnimationFrame(() => vEl.classList.add('open'));
+  if (!from || reduced()) return;
+  try { await vImg.decode(); } catch { /* still animate */ }
+  if (!viewer.open) return;
+  vImg.animate([{ transform: vTransformFor(from), opacity: .85 }, { transform: 'translate3d(0,0,0) scale(1)', opacity: 1 }], { duration: 380, easing: 'cubic-bezier(.2,.8,.2,1)' });
+}
+function closeViewer(fromHistory = false) {
+  if (!viewer.open) return;
+  viewer.open = false;
+  clearTimeout(viewer.tapTimer);
+  viewer.pointers.clear();
+  viewer.g = null;
+  if (!fromHistory && history.state?.viewer) history.back();
+  document.documentElement.classList.remove('no-scroll');
+  const changed = viewer.i !== viewer.start;
+  index = viewer.i;
+  if (view === 'album' && changed) renderAlbum();
+  const to = sourceImage();
+  vEl.classList.remove('open');
+  const finish = () => {
+    if (viewer.open) return;
+    vEl.hidden = true;
+    vImg.removeAttribute('src');
+    const target = view === 'album' ? (layout === 'grid' ? $(`.tile[data-index="${index}"]`) : $('.stage-open')) : null;
+    (target || (viewer.returnFocus?.isConnected ? viewer.returnFocus : null))?.focus({ preventScroll: true });
+  };
+  if (to && !reduced()) {
+    vImg.animate([{ transform: vImg.style.transform || 'none', opacity: 1 }, { transform: vTransformFor(to), opacity: .6 }], { duration: 300, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' })
+      .finished.catch(() => {}).then(() => { vImg.getAnimations().forEach(a => a.cancel()); finish(); });
+  } else setTimeout(finish, reduced() ? 0 : 250);
+}
+async function vGo(dir) {
+  const ni = viewer.i + dir;
+  if (!viewer.list[ni]) { viewer.x = 0; vApply(true); return; }
+  if (viewer.busy) return;
+  viewer.busy = true;
+  haptic(5);
+  const W = vRect().width;
+  try {
+    if (!reduced()) {
+      const out = vImg.animate([{ transform: vImg.style.transform || 'none', opacity: 1 }, { transform: `translate3d(${-dir * W * .5}px,0,0) scale(${viewer.s})`, opacity: 0 }], { duration: 170, easing: 'ease-in', fill: 'forwards' });
+      await out.finished.catch(() => {});
+      viewer.i = ni;
+      vLoad();
+      try { await vImg.decode(); } catch { /* show anyway */ }
+      out.cancel();
+      vImg.animate([{ transform: `translate3d(${dir * W * .28}px,0,0)`, opacity: 0 }, { transform: 'translate3d(0,0,0)', opacity: 1 }], { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    } else { viewer.i = ni; vLoad(); }
+  } finally { viewer.busy = false; }
+}
+function viewerKey(e) {
+  if (e.key === 'Escape') { e.preventDefault(); closeViewer(); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); vGo(-1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); vGo(1); }
+  else if (e.key === '+' || e.key === '=') vZoomTo(viewer.s * 1.4);
+  else if (e.key === '-') vZoomTo(viewer.s / 1.4);
+  else if (e.key === '0') vZoomTo(1);
+  else if (e.key === 'Tab') {
+    const items = $$('button:not(:disabled)', vEl).filter(b => b.offsetParent !== null);
+    if (!items.length) return;
+    const at = items.indexOf(document.activeElement);
+    e.preventDefault();
+    items[(at + (e.shiftKey ? -1 : 1) + items.length) % items.length].focus();
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Dialogs
+   -------------------------------------------------------------------------- */
+
+function showDialog(title, body, actions = '', opts = {}) {
+  clearTimeout(dialogCloseTimer);
+  dialog.className = opts.wide ? 'wide' : '';
+  dialog.innerHTML = `<div class="sheet-handle" aria-hidden="true"></div><div class="dialog-head"><h2 id="dialog-title">${title}</h2>${iconBtn('close-dialog', 'close', '關閉')}</div>${body}${actions ? `<div class="dialog-actions">${actions}</div>` : ''}`;
+  dialog.setAttribute('aria-labelledby', 'dialog-title');
+  if (!dialog.open) dialog.showModal();
+}
+function closeDialog() {
+  if (!dialog.open) return;
+  if (reduced()) { dialog.close(); return; }
+  dialog.classList.add('closing');
+  clearTimeout(dialogCloseTimer);
+  dialogCloseTimer = setTimeout(() => { dialog.classList.remove('closing'); if (dialog.open) dialog.close(); }, 190);
+}
+dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(); });
+dialog.addEventListener('close', () => { cropState = null; afterFolderSave = null; dialog.className = ''; });
+dialog.addEventListener('click', e => {
+  if (e.target !== dialog) return;
+  const r = dialog.getBoundingClientRect();
+  if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) closeDialog();
+});
+dialog.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.isComposing && e.target.matches('input[type=text]')) {
+    e.preventDefault();
+    $('.dialog-actions .btn-jelly', dialog)?.click();
+  }
+});
+
+function showFolders() {
+  showDialog('Room for more ideas.', `<p class="dialog-lead">給每種靈感一個位置。相機四周的果汁格會隨資料夾數量調整；只有一個資料夾時，外框不分格。</p>
+    <div class="fm-list">${folders.map((f, i) => `<div class="fm-row"><span class="fm-dot flavor-${i % 6}">${icon('folder')}</span><span class="fm-name">${esc(f.name)}<small>${countIn(f.id)} 張照片</small></span>${iconBtn('rename-folder', 'edit', `重新命名「${esc(f.name)}」`, `data-id="${esc(f.id)}"`)}${iconBtn('delete-folder', 'trash', `刪除「${esc(f.name)}」`, `data-id="${esc(f.id)}" ${folders.length === 1 ? 'disabled' : ''}`, 'danger')}</div>`).join('')}</div>
+    ${folders.length < MAX_FOLDERS ? `<button class="btn-jelly block j" data-action="new-folder">${icon('plus')}新增資料夾</button>` : `<p class="dialog-note">最多 ${MAX_FOLDERS} 個資料夾，讓相機四周保持好點選。</p>`}`);
+}
+function editFolder(id, { then = null, back = 'folders' } = {}) {
+  if (!id && folders.length >= MAX_FOLDERS) { warn(`最多可建立 ${MAX_FOLDERS} 個資料夾`); return; }
+  const f = folderById(id);
+  const ideas = ['午後的光', '材質', '配色', '字體', '街角', '植物', '構圖', '包裝'].filter(s => !folders.some(x => x.name === s)).slice(0, 5);
+  showDialog(f ? 'Rename a little space.' : 'A new little space.',
+    `<label for="folder-name">資料夾名稱</label><input id="folder-name" type="text" maxlength="24" value="${esc(f?.name || '')}" placeholder="例如：午後的光" autocomplete="off" enterkeyhint="done"><p id="folder-error" class="field-error" role="alert"></p>
+    ${!f && ideas.length ? `<div class="suggest" aria-label="名稱建議">${ideas.map(s => `<button class="suggest-chip" data-action="suggest-name" data-name="${esc(s)}">${esc(s)}</button>`).join('')}</div>` : ''}`,
+    `<button class="btn-ghost j" data-action="${back}">取消</button><button class="btn-jelly j" data-action="save-folder" data-id="${esc(id || '')}">${icon('check')}儲存</button>`);
+  afterFolderSave = then;
+  const input = $('#folder-name');
+  input.focus();
+  input.select();
+}
+async function storeFolder(id) {
+  const input = $('#folder-name'), err = $('#folder-error');
+  const name = input.value.trim().replace(/\s+/g, ' ');
+  if (!name) { err.textContent = '請輸入資料夾名稱'; shake(input); input.focus(); return; }
+  if (folders.some(f => f.name === name && f.id !== id)) { err.textContent = '這個名稱已經存在'; shake(input); input.focus(); return; }
+  if (!id && folders.length >= MAX_FOLDERS) { err.textContent = `最多可建立 ${MAX_FOLDERS} 個資料夾`; return; }
+  const old = structuredClone(folders), newId = id || uid();
+  if (id) folderById(id).name = name; else folders.push({ id: newId, name });
+  try { await saveFolders(); } catch { folders = old; warn('無法儲存資料夾，請重試'); return; }
+  const then = afterFolderSave;
+  afterFolderSave = null;
+  toast(id ? '資料夾已重新命名' : `已新增「${name}」`);
+  if (then) { closeDialog(); render(); await then(newId); }
+  else { render(); showFolders(); }
+}
+function askDeleteFolder(id) {
+  const f = folderById(id), others = folders.filter(x => x.id !== id), n = countIn(id);
+  if (!f || !others.length) return;
+  showDialog('Keep the ideas.', n
+    ? `<p class="dialog-lead">刪除「${esc(f.name)}」後，其中 ${n} 張照片與筆記會移到你選擇的資料夾，不會遺失。</p><label for="target-folder">移動到</label><select id="target-folder">${others.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select>`
+    : `<p class="dialog-lead">「${esc(f.name)}」目前沒有照片，可以直接刪除。</p><input type="hidden" id="target-folder" value="${esc(others[0].id)}">`,
+    `<button class="btn-ghost j" data-action="folders">取消</button><button class="btn-jelly danger-gel j" data-action="confirm-delete-folder" data-id="${esc(id)}">${icon('trash')}${n ? '移動照片並刪除' : '刪除資料夾'}</button>`);
+}
+async function deleteFolder(id) {
+  const target = $('#target-folder').value, nextFolders = folders.filter(f => f.id !== id);
+  try {
+    await transaction(['settings', 'photos'], tx => {
+      tx.objectStore('settings').put(nextFolders, 'folders');
+      for (const p of photos.filter(p => p.folderId === id)) tx.objectStore('photos').put({ ...p, folderId: target });
+    });
+    for (const p of photos) if (p.folderId === id) p.folderId = target;
+    folders = nextFolders;
+    if (folderId === id) { folderId = target; index = 0; }
+    render();
+    showFolders();
+    toast('資料夾已刪除，照片都保留了');
+  } catch { warn('操作失敗，請再試一次'); }
+}
+function askMove() {
+  const p = current();
+  if (!p) return;
+  showDialog('A different little space.', `<p class="dialog-lead">將「${esc(p.name)}」移動到：</p><div class="move-list">${folders.map((f, i) => `<button class="move-opt j" data-action="confirm-move" data-id="${esc(f.id)}" ${f.id === p.folderId ? 'disabled aria-current="true"' : ''}><i class="chip-dot flavor-${i % 6}"></i><span>${esc(f.name)}</span><small>${f.id === p.folderId ? '目前' : countIn(f.id)}</small></button>`).join('')}</div>`);
+}
+async function movePhoto(target) {
+  const p = current();
+  if (!p || target === p.folderId) return;
+  const next = { ...p, folderId: target };
+  await savePhoto(next);
+  Object.assign(p, next);
+  closeDialog();
+  renderAlbum();
+  toast(`已移動到「${folderById(target).name}」`, { label: '前往', action: () => openPhoto(p.id) });
+}
+async function deletePhoto() {
+  const p = current();
+  if (!p) return;
+  clearTimeout(noteTimers.get(p.id));
+  noteTimers.delete(p.id);
+  await request('photos', 'readwrite', s => s.delete(p.id));
+  photos = photos.filter(x => x.id !== p.id);
+  invalidate(p);
+  haptic(14);
+  renderAlbum();
+  toast('照片已刪除', {
+    icon: 'trash', label: '復原', duration: 6000, action: async () => {
+      try {
+        await savePhoto(p);
+        photos.push(p);
+        if (view === 'album') { folderId = p.folderId; index = Math.max(0, folderPhotos().findIndex(x => x.id === p.id)); renderAlbum(); }
+        toast('已復原照片');
+      } catch { warn('復原失敗，請再試一次'); }
+    }
+  });
+}
+function askRename() {
+  const p = current();
+  if (!p) return;
+  showDialog('Name this moment.', `<label for="photo-name">照片名稱</label><input id="photo-name" type="text" maxlength="60" value="${esc(p.name)}" autocomplete="off" enterkeyhint="done"><p id="photo-name-error" class="field-error" role="alert"></p>`,
+    `<button class="btn-ghost j" data-action="close-dialog">取消</button><button class="btn-jelly j" data-action="save-photo-name">${icon('check')}儲存</button>`);
+  const input = $('#photo-name');
+  input.focus();
+  input.select();
+}
+async function savePhotoName() {
+  const input = $('#photo-name'), name = input.value.trim().replace(/\s+/g, ' ');
+  if (!name) { $('#photo-name-error').textContent = '請輸入名稱'; shake(input); return; }
+  const p = current();
+  const next = { ...p, name };
+  await savePhoto(next);
+  Object.assign(p, next);
+  closeDialog();
+  renderAlbum();
+  toast('名稱已更新');
+}
+function askClearSamples() {
+  const n = photos.filter(p => p.demo).length;
+  showDialog('A clean slate.', `<p class="dialog-lead">移除 ${n} 張示範照片與它們的筆記。你自己拍攝或匯入的照片不受影響，示範照片之後也不會再出現。</p>`,
+    `<button class="btn-ghost j" data-action="close-dialog">保留</button><button class="btn-jelly j" data-action="confirm-clear-samples">${icon('sparkle')}清除示範照片</button>`);
+}
+async function clearSamples() {
+  const demos = photos.filter(p => p.demo);
+  try {
+    await transaction(['photos'], tx => { for (const p of demos) tx.objectStore('photos').delete(p.id); });
+    photos = photos.filter(p => !p.demo);
+    demos.forEach(invalidate);
+    index = 0;
+    closeDialog();
+    render();
+    toast(`已清除 ${demos.length} 張示範照片`);
+  } catch { warn('清除失敗，請再試一次'); }
+}
+
+/* --------------------------------------------------------------------------
+   Import, edit, export
+   -------------------------------------------------------------------------- */
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => { const im = new Image(); im.onload = () => resolve(im); im.onerror = reject; im.src = src; });
+}
+function canvasBlob(canvas) {
+  return new Promise((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error('encoding')), 'image/jpeg', .93));
+}
+async function normalizeFile(file) {
+  if (!ACCEPTED.includes(file.type)) throw new Error('type');
+  if (file.size > 25 * 1024 * 1024) throw new Error('size');
+  const url = URL.createObjectURL(file);
+  try {
+    const im = await loadImage(url);
+    if (im.naturalWidth * im.naturalHeight > 64000000) throw new Error('dimensions');
+    const scale = Math.min(1, 2400 / Math.max(im.naturalWidth, im.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.round(im.naturalWidth * scale);
+    c.height = Math.round(im.naturalHeight * scale);
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(im, 0, 0, c.width, c.height);
+    return await canvasBlob(c);
+  } finally { URL.revokeObjectURL(url); }
+}
+async function importFiles(files, native = false) {
+  if (!files.length || busy) return;
+  busy = true;
+  let ok = 0, failed = 0;
+  const target = folderId, targetName = folderById(target)?.name || '';
+  try {
+    for (const file of files) {
+      if (files.length > 1) toast(`匯入中 ${ok + failed + 1} / ${files.length}…`, { icon: 'import', duration: 60000 });
+      try {
+        const blob = await normalizeFile(file);
+        if (native && view === 'camera' && files.length === 1) {
+          clearPending();
+          pending = { blob, url: URL.createObjectURL(blob) };
+          busy = false;
+          renderCamera();
+          return;
+        }
+        const p = { id: uid(), blob, folderId: target, note: '', name: file.name.replace(/\.[^.]+$/, '').slice(0, 60) || '匯入的靈感', created: Date.now() + ok, demo: false };
+        await savePhoto(p);
+        photos.push(p);
+        ok++;
+      } catch { failed++; }
+    }
+    index = 0;
+    navDir = 0;
+    if (ok) persistStorage();
+    const msg = ok ? `${ok} 張照片已存到「${targetName}」` : '沒有匯入任何照片';
+    const hint = failed ? `；${failed} 張無法匯入（請使用 JPEG/PNG/WebP 等格式，單張不超過 25 MB／6400 萬像素）` : '';
+    if (view === 'album') { render(); toast(msg + hint, { icon: ok ? 'check' : 'close', duration: failed ? 6000 : 3000 }); }
+    else { render(); toast(msg + hint, ok ? { label: '查看', action: () => { folderId = target; index = 0; go('album'); } } : { icon: 'close' }); }
+  } finally {
+    busy = false;
+    $('#file-input').value = '';
+    $('#native-input').value = '';
+  }
+}
+async function updatePhotoBlob(p, blob) {
+  const updated = { ...p, blob, originalBlob: p.originalBlob || p.blob || await (await fetch(p.src)).blob() };
+  await savePhoto(updated);
+  Object.assign(p, updated);
+  invalidate(p);
+}
+async function rotatePhoto() {
+  const p = current();
+  if (!p || busy) return;
+  busy = true;
+  const img = $('#album-image');
+  const spin = img && !reduced() ? img.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(90deg) scale(.8)', opacity: .6 }], { duration: 260, easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'forwards' }) : null;
+  try {
+    const im = await loadImage(photoSrc(p));
+    const c = document.createElement('canvas');
+    c.width = im.naturalHeight; c.height = im.naturalWidth;
+    const ctx = c.getContext('2d');
+    ctx.translate(c.width / 2, c.height / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.drawImage(im, -im.naturalWidth / 2, -im.naturalHeight / 2);
+    await updatePhotoBlob(p, await canvasBlob(c));
+    renderAlbum();
+    toast('照片已旋轉 90°，可隨時還原');
+  } catch { spin?.cancel(); warn('無法調整照片，請重試'); }
+  finally { busy = false; }
+}
+async function openCrop() {
+  const p = current();
+  if (!p) return;
+  let im;
+  try { im = await loadImage(photoSrc(p)); } catch { warn('照片無法載入，請重試'); return; }
+  const natural = im.naturalWidth / im.naturalHeight;
+  cropState = { p, im, ratio: 1, scale: 1, x: 0, y: 0 };
+  const ratios = [['原比例', natural], ['1:1', 1], ['4:5', .8], ['3:4', .75], ['9:16', 9 / 16], ['4:3', 4 / 3], ['16:9', 16 / 9]];
+  showDialog('Find your frame.', `<p class="dialog-lead">拖曳照片調整位置，雙指、滾輪或拉條縮放，再儲存裁切。</p>
+    <div class="crop-preview" tabindex="0" aria-label="裁切預覽，可拖曳或使用方向鍵調整位置"><img src="${photoSrc(p)}" alt="裁切預覽" draggable="false"><div class="crop-window"></div></div>
+    <div class="ratio-row" role="group" aria-label="裁切比例">${ratios.map(([label, r]) => `<button class="ratio-btn ${label === '1:1' ? 'active' : ''}" data-action="crop-ratio" data-ratio="${r}" aria-pressed="${label === '1:1'}">${label}</button>`).join('')}</div>
+    <div class="zoom-row">${icon('minus')}<input id="crop-zoom" type="range" min="1" max="4" step="0.01" value="1" aria-label="裁切縮放" style="--p:0%">${icon('plus')}</div>`,
+    `<button class="btn-ghost j" data-action="close-dialog">取消</button><button class="btn-jelly j" data-action="apply-crop">${icon('check')}儲存裁切</button>`, { wide: true });
+  updateCrop();
+  const area = $('.crop-preview'), pts = new Map();
+  let g = null;
+  area.addEventListener('pointerdown', e => {
+    area.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; g = { pinch: true, d: dist(a, b) || 1, s: cropState.scale }; }
+    else g = { x: e.clientX, y: e.clientY, ox: cropState.x, oy: cropState.y };
+  });
+  area.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId) || !cropState) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (g?.pinch && pts.size >= 2) { const [a, b] = [...pts.values()]; setCropScale(g.s * dist(a, b) / g.d); }
+    else if (g && !g.pinch) { cropState.x = g.ox + e.clientX - g.x; cropState.y = g.oy + e.clientY - g.y; updateCrop(); }
+  });
+  const up = e => {
+    pts.delete(e.pointerId);
+    if (pts.size === 1 && cropState) { const [q] = [...pts.values()]; g = { x: q.x, y: q.y, ox: cropState.x, oy: cropState.y }; }
+    else if (!pts.size) g = null;
+  };
+  area.addEventListener('pointerup', up);
+  area.addEventListener('pointercancel', up);
+  area.addEventListener('wheel', e => { e.preventDefault(); if (cropState) setCropScale(cropState.scale * Math.exp(-e.deltaY * .002)); }, { passive: false });
+  area.addEventListener('keydown', e => {
+    const step = e.shiftKey ? 20 : 5, moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+    if (moves[e.key] && cropState) { e.preventDefault(); cropState.x += moves[e.key][0]; cropState.y += moves[e.key][1]; updateCrop(); }
+  });
+}
+function setCropScale(v) {
+  if (!cropState) return;
+  cropState.scale = clamp(v, 1, 4);
+  const z = $('#crop-zoom');
+  if (z) { z.value = cropState.scale; z.style.setProperty('--p', ((cropState.scale - 1) / 3 * 100) + '%'); }
+  updateCrop();
+}
+function updateCrop() {
+  const area = $('.crop-preview');
+  if (!cropState || !area) return;
+  const s = cropState, maxW = Math.max(40, area.clientWidth - 40), maxH = Math.max(40, area.clientHeight - 40);
+  const w = Math.min(maxW, maxH * s.ratio), h = w / s.ratio;
+  s.w = w; s.h = h;
+  s.factor = Math.max(w / s.im.naturalWidth, h / s.im.naturalHeight) * s.scale;
+  const iw = s.im.naturalWidth * s.factor, ih = s.im.naturalHeight * s.factor;
+  s.x = clamp(s.x, -(iw - w) / 2, (iw - w) / 2);
+  s.y = clamp(s.y, -(ih - h) / 2, (ih - h) / 2);
+  $('img', area).style.cssText = `position:absolute;width:${iw}px;height:${ih}px;max-width:none;max-height:none;transform:translate(${s.x}px,${s.y}px)`;
+  $('.crop-window', area).style.cssText = `width:${w}px;height:${h}px;left:50%;top:50%;transform:translate(-50%,-50%)`;
+}
+async function applyCrop() {
+  if (!cropState || busy) return;
+  busy = true;
+  const s = cropState;
+  try {
+    const c = document.createElement('canvas');
+    c.width = Math.round(s.w / s.factor);
+    c.height = Math.round(s.h / s.factor);
+    const sx = (s.im.naturalWidth - c.width) / 2 - s.x / s.factor, sy = (s.im.naturalHeight - c.height) / 2 - s.y / s.factor;
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(s.im, sx, sy, c.width, c.height, 0, 0, c.width, c.height);
+    await updatePhotoBlob(s.p, await canvasBlob(c));
+    closeDialog();
+    renderAlbum();
+    toast('裁切已儲存，可隨時還原');
+  } catch { warn('裁切儲存失敗，請重試'); }
+  finally { busy = false; }
+}
+async function resetPhoto() {
+  const p = current();
+  if (!p?.originalBlob) return;
+  try {
+    const next = { ...p, blob: p.originalBlob };
+    delete next.originalBlob;
+    await savePhoto(next);
+    delete p.originalBlob;
+    Object.assign(p, next);
+    invalidate(p);
+    renderAlbum();
+    toast('已還原原始照片');
+  } catch { warn('還原失敗，請重試'); }
+}
+async function downloadPhoto(p = current()) {
+  if (!p) return;
+  try {
+    const blob = await photoBlob(p);
+    const url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url;
+    a.download = safeName(p.name) + '.jpg';
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    toast('已開始下載', { icon: 'download' });
+  } catch { warn('下載失敗，請再試一次'); }
+}
+async function sharePhoto(p = current()) {
+  if (!p) return;
+  try {
+    const blob = await photoBlob(p);
+    const file = new File([blob], safeName(p.name) + '.jpg', { type: 'image/jpeg' });
+    if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: p.name });
+    else await downloadPhoto(p);
+  } catch (e) {
+    if (e?.name !== 'AbortError') { warn('無法分享，已改為下載'); downloadPhoto(p); }
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Actions
+   -------------------------------------------------------------------------- */
+
+async function handle(action, el) {
+  switch (action) {
+    case 'home': go('home'); break;
+    case 'camera': go('camera'); break;
+    case 'album': go('album'); break;
+    case 'open-photo': openPhoto(el.dataset.id); break;
+    case 'camera-last': { const last = latestPhoto(); if (last) openPhoto(last.id); else go('album'); break; }
+    case 'install': if (installPrompt) { installPrompt.prompt(); await installPrompt.userChoice.catch(() => {}); installPrompt = null; render(); } break;
+
+    case 'start-camera': cameraError = ''; cameraStarting = true; renderCamera(); await startCamera(); break;
+    case 'native-camera': $('#native-input').click(); break;
+    case 'flip-camera': await flipCamera(); break;
+    case 'shutter': await capture(); break;
+    case 'retake': clearPending(); haptic(6); if (!stream && !cameraError) cameraStarting = true; renderCamera(); if (!stream) startCamera(); break;
+    case 'choose-folder': if (pending) await storePending(el.dataset.id); else selectFolder(el.dataset.id); break;
+    case 'pending-new-folder': editFolder(null, { back: 'close-dialog', then: id => storePending(id) }); break;
+
+    case 'import': $('#file-input').click(); break;
+    case 'album-folder': if (folderId !== el.dataset.id) { folderId = el.dataset.id; rememberFolder(); index = 0; navDir = 0; renderAlbum(); } break;
+    case 'layout': layout = el.dataset.layout; setSetting('layout', layout).catch(() => {}); navDir = 0; renderAlbum(); break;
+    case 'prev': changeIndex(index - 1); break;
+    case 'next': changeIndex(index + 1); break;
+    case 'thumbnail': changeIndex(Number(el.dataset.index)); break;
+    case 'open-viewer': await openViewer(index); break;
+    case 'view': await openViewer(Number(el.dataset.index)); break;
+    case 'rotate': await rotatePhoto(); break;
+    case 'crop': await openCrop(); break;
+    case 'reset-photo': await resetPhoto(); break;
+    case 'crop-ratio':
+      if (!cropState) break;
+      cropState.ratio = Number(el.dataset.ratio); cropState.x = 0; cropState.y = 0;
+      $$('.ratio-btn').forEach(b => { b.classList.toggle('active', b === el); b.setAttribute('aria-pressed', b === el); });
+      updateCrop();
+      break;
+    case 'apply-crop': await applyCrop(); break;
+    case 'download': await downloadPhoto(); break;
+    case 'share': await sharePhoto(); break;
+    case 'move': askMove(); break;
+    case 'confirm-move': await movePhoto(el.dataset.id); break;
+    case 'delete': await deletePhoto(); break;
+    case 'rename-photo': askRename(); break;
+    case 'save-photo-name': await savePhotoName(); break;
+    case 'clear-samples': askClearSamples(); break;
+    case 'confirm-clear-samples': await clearSamples(); break;
+
+    case 'folders': showFolders(); break;
+    case 'new-folder':
+      if (el.closest('dialog')) editFolder(null);
+      else editFolder(null, { back: 'close-dialog', then: view === 'album' ? id => { folderId = id; index = 0; renderAlbum(); } : null });
+      break;
+    case 'suggest-name': { const input = $('#folder-name'); input.value = el.dataset.name; input.focus(); $('#folder-error').textContent = ''; break; }
+    case 'rename-folder': editFolder(el.dataset.id); break;
+    case 'save-folder': await storeFolder(el.dataset.id || null); break;
+    case 'delete-folder': askDeleteFolder(el.dataset.id); break;
+    case 'confirm-delete-folder': await deleteFolder(el.dataset.id); break;
+    case 'close-dialog': closeDialog(); break;
+
+    case 'lb-close': closeViewer(); break;
+    case 'lb-prev': await vGo(-1); break;
+    case 'lb-next': await vGo(1); break;
+    case 'lb-zoom': vToggleZoom(); break;
+    case 'lb-download': await downloadPhoto(viewer.list[viewer.i]); break;
+    case 'lb-share': await sharePhoto(viewer.list[viewer.i]); break;
+    case 'lb-edit':
+      closeViewer();
+      if (layout !== 'stage') { layout = 'stage'; setSetting('layout', layout).catch(() => {}); renderAlbum(); }
+      requestAnimationFrame(() => $('.details')?.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' }));
+      break;
+    case 'toast-action': { const a = toastAction; hideToast(); await a?.(); break; }
+  }
+}
+
+function jellyKey(b) {
+  let key = `[data-action="${CSS.escape(b.dataset.action)}"]`;
+  if (b.dataset.id) key += `[data-id="${CSS.escape(b.dataset.id)}"]`;
+  if (b.dataset.index) key += `[data-index="${CSS.escape(b.dataset.index)}"]`;
+  return key;
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-action]');
+  if (!b || b.disabled) return;
+  if (performance.now() < suppressClickUntil && b.closest('#stage')) return;
+  jelly(b);
+  const key = jellyKey(b);
+  handle(b.dataset.action, b)
+    .then(() => {
+      if (b.isConnected) return;
+      const twin = document.querySelector(key);
+      if (twin && !twin.classList.contains('gulp')) jelly(twin);
+    })
+    .catch(() => warn('操作未完成，請再試一次'));
+});
+document.addEventListener('input', e => {
+  if (e.target.id === 'photo-range') {
+    const n = Number(e.target.value), list = folderPhotos(), p = list[n];
+    e.target.style.setProperty('--p', (list.length > 1 ? n / (list.length - 1) * 100 : 0) + '%');
+    if (p) { $('#album-image').src = photoSrc(p); $('.photo-counter').textContent = pad2(n + 1); }
+  }
+  if (e.target.id === 'crop-zoom') setCropScale(Number(e.target.value));
+});
+document.addEventListener('change', e => { if (e.target.id === 'photo-range') changeIndex(Number(e.target.value)); });
+$('#file-input').addEventListener('change', e => importFiles([...e.target.files]).catch(() => warn('匯入失敗，請重試')));
+$('#native-input').addEventListener('change', e => importFiles([...e.target.files], true).catch(() => warn('拍攝匯入失敗，請重試')));
+
+document.addEventListener('keydown', e => {
+  if (viewer.open) { viewerKey(e); return; }
+  if (dialog.open || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target.matches('input, textarea, select, [contenteditable]')) return;
+  const onButton = !!e.target.closest('button, a');
+  if (view === 'album') {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      if (layout === 'grid') return;
+      e.preventDefault();
+      changeIndex(index + (e.key === 'ArrowRight' ? 1 : -1));
+    } else if ((e.key === ' ' || e.key === 'f') && !onButton && folderPhotos().length) { e.preventDefault(); openViewer(index); }
+  } else if (view === 'camera') {
+    if ((e.key === ' ' || e.key === 'Enter') && !onButton) { e.preventDefault(); jelly($('.shutter')); capture(); }
+    else if (e.key === 'Escape' && pending) { e.preventDefault(); handle('retake'); }
+    else if (/^[1-9]$/.test(e.key)) {
+      const f = folders[Number(e.key) - 1];
+      if (!f) return;
+      jelly($(`.folder-cell[data-id="${CSS.escape(f.id)}"]`));
+      if (pending) storePending(f.id); else selectFolder(f.id);
+    }
+  }
+});
+
+/* Drag & drop and paste to import */
+let dragDepth = 0;
+const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
+const dropZone = document.createElement('div');
+dropZone.className = 'drop-zone';
+dropZone.setAttribute('aria-hidden', 'true');
+document.body.append(dropZone);
+addEventListener('dragenter', e => {
+  if (!hasFiles(e) || viewer.open) return;
+  e.preventDefault();
+  if (!dragDepth++) {
+    dropZone.innerHTML = `<div><span class="empty-orb">${icon('import')}</span><strong>放開以匯入照片</strong><span>將存到「${esc(folderById(folderId)?.name || '')}」</span></div>`;
+    document.body.classList.add('dropping');
+  }
+});
+addEventListener('dragover', e => { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+addEventListener('dragleave', e => { if (hasFiles(e) && !(dragDepth = Math.max(0, dragDepth - 1))) document.body.classList.remove('dropping'); });
+addEventListener('drop', e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  dragDepth = 0;
+  document.body.classList.remove('dropping');
+  const files = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/'));
+  if (files.length && db) importFiles(files).then(() => { if (view === 'home') go('album'); }).catch(() => warn('匯入失敗，請重試'));
+});
+addEventListener('paste', e => {
+  if (!db || dialog.open || viewer.open) return;
+  const files = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'));
+  if (!files.length) return;
+  e.preventDefault();
+  importFiles(files).catch(() => warn('匯入失敗，請重試'));
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { stopCamera(); flushNotes(); }
+  else if (view === 'camera' && !pending && !stream) { cameraStarting = true; renderCamera(); startCamera(); }
+});
+addEventListener('pagehide', flushNotes);
+addEventListener('resize', () => { if (cropState) updateCrop(); });
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; if (view === 'home') renderHome(); });
+addEventListener('appinstalled', () => { installPrompt = null; toast('已安裝 Insp Camera'); if (view === 'home') renderHome(); });
+
+/* --------------------------------------------------------------------------
+   Boot
+   -------------------------------------------------------------------------- */
+
+async function init() {
+  try {
+    db = await openDB();
+    folders = await getSetting('folders') || initialFolders;
+    await saveFolders();
+    photos = await request('photos', 'readonly', s => s.getAll());
+    layout = (await getSetting('layout')) === 'grid' ? 'grid' : 'stage';
+    if (!await getSetting('seeded')) {
+      const samples = [['architecture', '轉角裡的安靜', '暖色的牆面、低飽和的材質，想留住空間裡的呼吸感。', 0], ['light', '光落下的地方', '透過葉隙的光，像是不規則的筆觸。', 1], ['texture', '水面的紋理', '重複的波紋，或許能變成下一張海報的背景。', 2], ['objects', '日常物件的線條', '觀察熟悉物件的比例與輪廓。', 3], ['colors', '一組自然的配色', '從風景裡收集一組讓心安靜的色彩。', 4], ['street', '夜色的層次', '明暗交界處，也藏著值得收藏的細節。', 5], ['light', '自然留下的光譜', '換一個角度，看見另一種光。', 0], ['colors', '日常之外的風景', '這些色彩可以成為空間的靈感。', 0]];
+      for (let i = 0; i < samples.length; i++) {
+        const [src, name, note, f] = samples[i];
+        const p = { id: 'sample-' + i, src: `./assets/${src}.jpg`, folderId: 'f' + f, name, note, created: Date.now() - (i + 1) * 86400000, demo: true };
+        if (!folderById(p.folderId)) p.folderId = folders[0].id;
+        await savePhoto(p);
+        photos.push(p);
+      }
+      await setSetting('seeded', true);
+    }
+    const lastFolder = await getSetting('lastFolder');
+    folderId = folderById(lastFolder) ? lastFolder : folders[0].id;
+    view = routeFromHash();
+    history.replaceState({ view, prev: null }, '', urlFor(view));
+    show(view);
+  } catch {
+    app.innerHTML = `<div class="shell"><div class="boot"><span class="boot-orb"></span><span class="boot-word">Insp <em>Camera</em></span><p class="save-alert">無法開啟裝置儲存空間。請退出私密瀏覽模式，或允許此網站儲存資料後重新整理。</p></div></div>`;
+  }
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+}
 init();

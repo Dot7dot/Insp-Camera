@@ -3,17 +3,24 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
   <meta name="referrer" content="no-referrer">
-  <meta name="theme-color" content="#f4f1e9">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#08080a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Insp Camera">
   <meta name="description" content="Insp Camera — 捕捉、分類、重溫你的創作靈感。">
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icon.svg">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="stylesheet" href="./styles.css">
   <title>Insp Camera</title>
 </head>
 <body>
-  <main id="app"><div class="loading">Insp<span>Camera</span></div></main>
+  <main id="app"><div class="boot" aria-label="載入中"><span class="boot-orb"></span><span class="boot-word">Insp <em>Camera</em></span></div></main>
+  <noscript><p class="save-alert">Insp Camera 需要啟用 JavaScript 才能使用。</p></noscript>
   <div id="toast" role="status" aria-live="polite"></div>
   <dialog id="dialog"></dialog>
   <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif" multiple hidden>
