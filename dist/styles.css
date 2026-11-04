@@ -956,7 +956,7 @@ input[type=range]:disabled { opacity: .4; cursor: default; }
 #toast {
   position: fixed; left: 50%; bottom: calc(22px + var(--safe-b)); z-index: 95;
   display: flex; align-items: center; gap: 12px;
-  max-width: min(92vw, 480px); min-height: 50px;
+  width: max-content; max-width: min(92vw, 480px); min-height: 50px;
   padding: 8px 18px;
   border-radius: 999px;
   background: rgba(30, 30, 35, .94);
@@ -1000,6 +1000,8 @@ dialog.confirm .dialog-head .icon-btn { display: none; }
 dialog.confirm .dialog-actions { margin-top: 18px; }
 dialog.confirm .dialog-actions > * { flex: 1; height: 46px; padding: 0 14px; }
 .dialog-alert { margin: 12px 0 0 !important; }
+dialog.still[open], dialog.still.confirm[open] { animation: fade-only .2s ease-out; }
+@keyframes fade-only { from { opacity: .4; } }
 dialog[open] { animation: pop-in .44s var(--ease-jelly); }
 dialog.closing { animation: pop-out .16s ease-in forwards; }
 dialog::backdrop { background: rgba(0, 0, 0, .62); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
