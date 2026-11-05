@@ -19,7 +19,7 @@ const paths = {
   folder: '<path d="M3 7.5V6a1.5 1.5 0 0 1 1.5-1.5h4.6l2 2.5h8.4A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z"/><path d="M3 9.5h18"/>',
   back: '<path d="m11 5-7 7 7 7M4.5 12H20"/>', right: '<path d="m9 5 7 7-7 7"/>', left: '<path d="m15 5-7 7 7 7"/>',
   plus: '<path d="M12 5v14M5 12h14"/>', minus: '<path d="M5 12h14"/>', close: '<path d="m6 6 12 12M6 18 18 6"/>',
-  check: '<path d="m5 12.5 4.5 4.5L19 7"/>', import: '<path d="M12 15V3m-4 4 4-4 4 4M4 14v5.5A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5V14"/>',
+  check: '<path d="m5 12.5 4.5 4.5L19 7"/>', import: '<path d="M20 13v5.5A2.5 2.5 0 0 1 17.5 21h-11A2.5 2.5 0 0 1 4 18.5v-11A2.5 2.5 0 0 1 6.5 5H11"/><path d="m4 17 4.5-4.5 3.5 3.5 2-2 3 3"/><path d="M18 2.5v7M14.5 6h7"/>',
   download: '<path d="M12 3v12m-4.5-4.5L12 15l4.5-4.5M4 17v2.5A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5V17"/>',
   image: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m3 17 5-5 4 4 3.5-3.5L21 18"/>',
   crop: '<path d="M7 2v15h15M2 7h15v15"/>', rotate: '<path d="M4 11a8 8 0 1 1 2.3 5.7M4 5v6h6"/>',
@@ -36,6 +36,8 @@ const paths = {
   zoomIn: '<circle cx="11" cy="11" r="7"/><path d="M11 8v6M8 11h6M20.5 20.5 16 16"/>',
   zoomOut: '<circle cx="11" cy="11" r="7"/><path d="M8 11h6M20.5 20.5 16 16"/>',
   note: '<path d="M6 3.5h9l4 4V20a.5.5 0 0 1-.5.5h-12A.5.5 0 0 1 6 20V3.5Z"/><path d="M9.5 11h6M9.5 15h4"/>',
+  export: '<path d="M12 14V3m-4 4 4-4 4 4"/><path d="M8.5 10H6a1.5 1.5 0 0 0-1.5 1.5v8A1.5 1.5 0 0 0 6 21h12a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 18 10h-2.5"/>',
+  saveImg: '<path d="M20 12.5V18.5A2.5 2.5 0 0 1 17.5 21h-11A2.5 2.5 0 0 1 4 18.5v-11A2.5 2.5 0 0 1 6.5 5H11"/><path d="m4 17 4.5-4.5 3.5 3.5 2-2 3 3"/><path d="M18 3v7m-3-3 3 3 3-3"/>',
   install: '<path d="M12 3v11m-4-4 4 4 4-4"/><rect x="4" y="17" width="16" height="4" rx="1.5"/>'
 };
 const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.image}</svg>`;
@@ -71,6 +73,10 @@ let toastTimer, toastAction = null, afterFolderSave = null, cropState = null, di
 let navDir = 0, suppressClickUntil = 0, installPrompt = null, persistAsked = false;
 const noteTimers = new Map();
 const blobURL = new Map();
+const fileCache = new Map();
+// Phones save to the photo album through the system share sheet ("Save Image"); computers download.
+const fileShare = (() => { try { return !!navigator.canShare?.({ files: [new File([new Uint8Array(1)], 'x.jpg', { type: 'image/jpeg' })] }); } catch { return false; } })();
+const toAlbum = () => fileShare && matchMedia('(pointer: coarse)').matches;
 
 const folderById = id => folders.find(f => f.id === id);
 const folderIndex = id => folders.findIndex(f => f.id === id);
@@ -88,7 +94,7 @@ function photoSrc(p) {
   }
   return p.src;
 }
-function invalidate(p) { if (blobURL.has(p.id)) { URL.revokeObjectURL(blobURL.get(p.id)); blobURL.delete(p.id); } }
+function invalidate(p) { fileCache.delete(p.id); if (blobURL.has(p.id)) { URL.revokeObjectURL(blobURL.get(p.id)); blobURL.delete(p.id); } }
 async function photoBlob(p) { return p.blob || await (await fetch(p.src)).blob(); }
 
 /* --------------------------------------------------------------------------
@@ -539,7 +545,7 @@ function renderAlbum() {
   const demoCount = photos.filter(x => x.demo).length;
   const body = !p ? emptyHTML(f) : layout === 'grid' ? gridHTML(list) : `<div class="album-body">${stageHTML(p, list)}${detailsHTML(p)}</div>`;
   app.innerHTML = `<div class="shell album-page">
-    ${topbar('Collection', `${photos.length} moments · ${folders.length} folders`, `<button class="pill pill-accent j" data-action="import">${icon('import')}<span>匯入</span></button>${iconBtn('folders', 'folder', '管理資料夾')}`)}
+    ${topbar('Collection', `${photos.length} moments · ${folders.length} folders`, `<button class="pill pill-accent j" data-action="import">${icon('import')}<span>匯入</span></button>${iconBtn('export', 'export', '匯出照片')}${iconBtn('folders', 'folder', '管理資料夾')}`)}
     <section class="album">
       <nav class="chips" aria-label="資料夾">${folders.map((x, i) => `<button class="chip j ${x.id === folderId ? 'active' : ''}" data-action="album-folder" data-id="${esc(x.id)}" aria-pressed="${x.id === folderId}"><i class="chip-dot flavor-${i % 6}"></i>${esc(x.name)}<small>${pad2(countIn(x.id))}</small></button>`).join('')}${folders.length < MAX_FOLDERS ? `<button class="chip chip-add j" data-action="new-folder" aria-label="新增資料夾" title="新增資料夾">${icon('plus')}</button>` : ''}</nav>
       ${demoCount ? `<div class="demo-banner">${icon('sparkle')}<span>收藏中有 ${demoCount} 張示範照片，隨時可以一鍵清除。</span><button class="link-btn" data-action="clear-samples">清除示範</button></div>` : ''}
@@ -580,8 +586,7 @@ function stageHTML(p, list) {
       ${tool('crop', 'crop', '裁切')}
       ${tool('rotate', 'rotate', '旋轉')}
       ${tool('reset-photo', 'reset', '還原', p.originalBlob ? '' : 'disabled')}
-      ${navigator.share ? tool('share', 'share', '分享') : ''}
-      ${tool('download', 'download', '下載')}
+      ${tool('save-photo', 'saveImg', '儲存', `title="${toAlbum() ? '存到手機相簿' : '下載照片'}"`)}
     </div>
     ${list.length > 1 ? `<div class="scrub"><span class="photo-counter">${pad2(index + 1)}</span><input id="photo-range" type="range" aria-label="切換照片" min="0" max="${list.length - 1}" value="${index}" style="--p:${pct}%"><span>${pad2(list.length)}</span></div>` : ''}
     <div class="thumbs" aria-label="照片縮圖">${list.map((x, i) => `<button class="thumb ${i === index ? 'active' : ''}" data-action="thumbnail" data-index="${i}" aria-label="第 ${i + 1} 張：${esc(x.name)}" aria-pressed="${i === index}"><img src="${photoSrc(x)}" alt="" loading="lazy"></button>`).join('')}</div>
@@ -713,7 +718,7 @@ function buildViewer() {
       <div class="viewer-title"><strong id="v-name"></strong><span id="v-meta"></span></div>
       <button class="v-btn j" data-action="lb-zoom" id="v-zoom-btn" aria-label="放大" title="放大">${icon('zoomIn')}</button>
       ${navigator.share ? `<button class="v-btn j" data-action="lb-share" aria-label="分享" title="分享">${icon('share')}</button>` : ''}
-      <button class="v-btn j" data-action="lb-download" aria-label="下載" title="下載">${icon('download')}</button>
+      <button class="v-btn j" data-action="lb-save" aria-label="${toAlbum() ? '存到相簿' : '下載'}" title="${toAlbum() ? '存到相簿' : '下載'}">${icon('saveImg')}</button>
       <button class="v-btn j" data-action="lb-edit" aria-label="筆記與編輯" title="筆記與編輯">${icon('edit')}</button>
       <button class="v-btn close j" data-action="lb-close" id="v-close" aria-label="關閉檢視器" title="關閉 (Esc)">${icon('close')}</button>
     </div>
@@ -992,7 +997,7 @@ function closeDialog() {
   dialogCloseTimer = setTimeout(() => { dialog.classList.remove('closing'); if (dialog.open) dialog.close(); }, 190);
 }
 dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(); });
-dialog.addEventListener('close', () => { cropState = null; afterFolderSave = null; dialog.className = ''; if (toastEl.parentNode === dialog) document.body.append(toastEl); });
+dialog.addEventListener('close', () => { cropState = null; afterFolderSave = null; exportJob = null; exportBusy = false; dialog.className = ''; if (toastEl.parentNode === dialog) document.body.append(toastEl); });
 dialog.addEventListener('click', e => {
   if (e.target !== dialog) return;
   const r = dialog.getBoundingClientRect();
@@ -1378,6 +1383,213 @@ async function sharePhoto(p = current()) {
 }
 
 /* --------------------------------------------------------------------------
+   Save to album + export
+   -------------------------------------------------------------------------- */
+
+const isoDay = (t = Date.now()) => { const d = new Date(t); return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`; };
+function makeFile(p, blob, name = safeName(p.name) + '.jpg') {
+  const file = new File([blob], name, { type: 'image/jpeg', lastModified: p.created });
+  fileCache.set(p.id, file);
+  return file;
+}
+async function fileFor(p) { return fileCache.get(p.id) || makeFile(p, await photoBlob(p)); }
+
+// Save one photo: share sheet on phones ("儲存影像" puts it in the photo album), download elsewhere.
+async function savePhotoToAlbum(p = current()) {
+  if (!p) return;
+  if (!toAlbum()) { await downloadPhoto(p); return; }
+  let file = fileCache.get(p.id) || (p.blob ? makeFile(p, p.blob) : null);
+  const prepared = !!file;
+  if (!file) {
+    try { file = await fileFor(p); } catch { warn('照片無法讀取，請再試一次'); return; }
+  }
+  try {
+    await navigator.share({ files: [file] });
+    toast('已完成');
+  } catch (e) {
+    if (e?.name === 'AbortError') return;
+    if (e?.name === 'NotAllowedError' && !prepared) { toast('照片已準備好，請再點一次「儲存」', { icon: 'saveImg' }); return; }
+    warn('無法開啟儲存選單，已改為下載');
+    await downloadPhoto(p);
+  }
+}
+
+let exportSel = new Set(), exportJob = null, exportBusy = false;
+const exportList = () => folders.filter(f => exportSel.has(f.id)).flatMap(f => photos.filter(p => p.folderId === f.id).sort(byNewest));
+function openExport() {
+  exportSel = new Set(folders.filter(f => countIn(f.id)).map(f => f.id));
+  if (view === 'album' && countIn(folderId) && exportSel.size > 1) exportSel = new Set([folderId]);
+  exportJob = null;
+  const album = toAlbum();
+  showDialog('匯出照片', `<p class="dialog-lead">選擇要匯出的資料夾。${album ? '照片會透過分享選單存到手機相簿。' : '照片會依資料夾打包成一個 ZIP 檔下載。'}</p>
+    <div class="pick-head"><span id="export-summary" class="pick-summary"></span><button class="link-btn" data-action="export-all" id="export-all"></button></div>
+    <div class="pick-list">${folders.map((f, i) => { const n = countIn(f.id), on = exportSel.has(f.id); return `<button class="pick-row j ${on ? 'on' : ''}" role="checkbox" aria-checked="${on}" data-action="export-toggle" data-id="${esc(f.id)}" ${n ? '' : 'disabled'}><span class="fm-dot flavor-${i % 6}">${icon('folder')}</span><span class="pick-name">${esc(f.name)}<small>${n ? n + ' 張照片' : '沒有照片'}</small></span><span class="pick-box">${icon('check')}</span></button>`; }).join('')}</div>
+    <div class="export-progress" id="export-progress" hidden><span class="export-bar"><i id="export-bar"></i></span><p id="export-status"></p></div>
+    ${album ? '<p class="dialog-note export-hint" id="export-hint"></p>' : ''}`,
+    `${album ? `<button class="btn-ghost j" data-action="export-zip" title="下載 ZIP 檔">${icon('download')}ZIP</button>` : '<button class="btn-ghost j" data-action="close-dialog">取消</button>'}<button class="btn-jelly j" id="export-go" data-action="${album ? 'export-share' : 'export-zip'}">${icon(album ? 'saveImg' : 'download')}<span id="export-go-label"></span></button>`);
+  updateExport();
+}
+function updateExport() {
+  const list = exportList(), all = folders.filter(f => countIn(f.id));
+  const summary = $('#export-summary'), allBtn = $('#export-all'), go = $('#export-go'), label = $('#export-go-label'), hint = $('#export-hint');
+  if (!summary) return;
+  summary.textContent = list.length ? `已選 ${exportSel.size} 個資料夾 · ${list.length} 張照片` : '請選擇至少一個資料夾';
+  const allOn = all.length > 0 && all.every(f => exportSel.has(f.id));
+  allBtn.textContent = allOn ? '取消全選' : '全選';
+  allBtn.hidden = !all.length;
+  go.disabled = !list.length || exportBusy;
+  $$('[data-action="export-zip"], .pick-row, #export-all', dialog).forEach(b => { if (b.classList.contains('pick-row') && !countIn(b.dataset.id)) return; b.disabled = exportBusy || (b.dataset.action === 'export-zip' && !list.length); });
+  if (!toAlbum()) { label.textContent = list.length ? `下載 ZIP（${list.length} 張）` : '下載 ZIP'; return; }
+  const job = exportJob;
+  if (job?.ready) {
+    const batch = job.batches[job.next];
+    label.textContent = job.batches.length > 1 ? `儲存第 ${job.next + 1}/${job.batches.length} 批（${batch.length} 張）` : `存到相簿（${batch.length} 張）`;
+  } else label.textContent = list.length ? `存到相簿（${list.length} 張）` : '存到相簿';
+  if (hint) hint.textContent = list.length ? `在分享選單點「儲存 ${job?.ready ? job.batches[job.next].length : Math.min(list.length, BATCH_MAX)} 張影像」，照片就會出現在手機相簿。${list.length > BATCH_MAX ? `照片較多時會分批儲存，每批最多 ${BATCH_MAX} 張。` : ''}` : '';
+}
+function exportProgress(done, total, text) {
+  const box = $('#export-progress');
+  if (!box) return;
+  box.hidden = false;
+  $('#export-bar').style.width = (total ? done / total * 100 : 0) + '%';
+  $('#export-status').textContent = text;
+}
+function setExportBusy(v) { exportBusy = v; updateExport(); }
+function toggleExport(id) {
+  if (exportBusy) return;
+  exportSel.has(id) ? exportSel.delete(id) : exportSel.add(id);
+  exportJob = null;
+  const row = $(`.pick-row[data-id="${CSS.escape(id)}"]`, dialog), on = exportSel.has(id);
+  row?.classList.toggle('on', on);
+  row?.setAttribute('aria-checked', on);
+  $('#export-progress').hidden = true;
+  haptic(6);
+  updateExport();
+}
+function toggleExportAll() {
+  if (exportBusy) return;
+  const all = folders.filter(f => countIn(f.id)), allOn = all.every(f => exportSel.has(f.id));
+  exportSel = new Set(allOn ? [] : all.map(f => f.id));
+  exportJob = null;
+  $$('.pick-row', dialog).forEach(r => { const on = exportSel.has(r.dataset.id); r.classList.toggle('on', on); r.setAttribute('aria-checked', on); });
+  $('#export-progress').hidden = true;
+  updateExport();
+}
+const BATCH_MAX = 20, BATCH_BYTES = 60 * 1024 * 1024;
+async function exportShare() {
+  if (exportBusy) return;
+  if (exportJob?.ready) { await shareNextBatch(); return; }
+  const list = exportList();
+  if (!list.length) return;
+  // Files already in memory can be shared within this same tap; otherwise a second tap opens the sheet.
+  const instant = list.every(p => p.blob || fileCache.has(p.id));
+  setExportBusy(true);
+  const files = [];
+  try {
+    for (let i = 0; i < list.length; i++) {
+      if (!instant) exportProgress(i, list.length, `準備中 ${i + 1} / ${list.length}`);
+      files.push(await fileFor(list[i]));
+    }
+  } catch { setExportBusy(false); warn('有照片無法讀取，請再試一次'); return; }
+  const batches = [];
+  let cur = [], bytes = 0;
+  for (const f of files) {
+    if (cur.length && (cur.length >= BATCH_MAX || bytes + f.size > BATCH_BYTES)) { batches.push(cur); cur = []; bytes = 0; }
+    cur.push(f); bytes += f.size;
+  }
+  if (cur.length) batches.push(cur);
+  exportJob = { ready: true, total: files.length, batches, next: 0 };
+  exportBusy = false;
+  if (instant) { await shareNextBatch(); return; }
+  exportProgress(0, batches.length, batches.length > 1 ? `已準備好 ${files.length} 張，分 ${batches.length} 批儲存` : `已準備好 ${files.length} 張，點下方按鈕開啟儲存選單`);
+  updateExport();
+}
+async function shareNextBatch() {
+  const job = exportJob, batch = job.batches[job.next];
+  try {
+    await navigator.share({ files: batch });
+  } catch (e) {
+    updateExport();
+    if (e?.name === 'AbortError') return;
+    if (e?.name === 'NotAllowedError') { exportProgress(job.next, job.batches.length, '已準備好，點下方按鈕開啟儲存選單'); return; }
+    warn('無法開啟儲存選單，可以改用 ZIP 下載');
+    return;
+  }
+  job.next++;
+  haptic(10);
+  if (job.next >= job.batches.length) {
+    exportJob = null;
+    closeDialog();
+    toast(`已匯出 ${job.total} 張照片`);
+    return;
+  }
+  exportProgress(job.next, job.batches.length, `已完成 ${job.next} / ${job.batches.length} 批，繼續儲存下一批`);
+  updateExport();
+}
+
+// Minimal ZIP writer (stored, no compression: JPEGs are already compressed).
+const crcTable = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(bytes) { let c = 0xffffffff; for (let i = 0; i < bytes.length; i++) c = crcTable[(c ^ bytes[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
+function dosStamp(t) {
+  const d = new Date(t), y = Math.max(1980, d.getFullYear());
+  return { time: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), date: ((y - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate() };
+}
+function buildZip(entries) {
+  const enc = new TextEncoder(), parts = [], central = [];
+  let offset = 0;
+  for (const e of entries) {
+    const name = enc.encode(e.name), size = e.data.length, { time, date } = dosStamp(e.time);
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+    h.setUint16(10, time, true); h.setUint16(12, date, true); h.setUint32(14, e.crc, true);
+    h.setUint32(18, size, true); h.setUint32(22, size, true); h.setUint16(26, name.length, true); h.setUint16(28, 0, true);
+    parts.push(h.buffer, name, e.data);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true);
+    c.setUint16(12, time, true); c.setUint16(14, date, true); c.setUint32(16, e.crc, true);
+    c.setUint32(20, size, true); c.setUint32(24, size, true); c.setUint16(28, name.length, true);
+    c.setUint32(42, offset, true);
+    central.push(c.buffer, name);
+    offset += 30 + name.length + size;
+  }
+  const cdSize = central.reduce((n, b) => n + b.byteLength, 0), end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, entries.length, true); end.setUint16(10, entries.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
+}
+async function exportZip() {
+  if (exportBusy) return;
+  const list = exportList();
+  if (!list.length) return;
+  setExportBusy(true);
+  try {
+    const entries = [], counters = new Map();
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i], folder = safeName(folderById(p.folderId)?.name || 'Insp');
+      exportProgress(i, list.length, `打包中 ${i + 1} / ${list.length}`);
+      const n = (counters.get(folder) || 0) + 1;
+      counters.set(folder, n);
+      const data = new Uint8Array(await (await photoBlob(p)).arrayBuffer());
+      entries.push({ name: `${folder}/${String(n).padStart(3, '0')}_${safeName(p.name)}.jpg`, data, crc: crc32(data), time: p.created });
+    }
+    const url = URL.createObjectURL(buildZip(entries)), a = document.createElement('a');
+    a.href = url;
+    a.download = `Insp-Camera-${isoDay()}.zip`;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    exportBusy = false;
+    closeDialog();
+    toast(`已下載 ${list.length} 張照片的 ZIP 檔`, { icon: 'download' });
+  } catch (e) {
+    console.error(e);
+    setExportBusy(false);
+    warn('打包失敗，請減少資料夾後再試一次');
+  }
+}
+
+/* --------------------------------------------------------------------------
    Actions
    -------------------------------------------------------------------------- */
 
@@ -1418,6 +1630,12 @@ async function handle(action, el) {
     case 'apply-crop': await applyCrop(); break;
     case 'download': await downloadPhoto(); break;
     case 'share': await sharePhoto(); break;
+    case 'save-photo': await savePhotoToAlbum(); break;
+    case 'export': openExport(); break;
+    case 'export-toggle': toggleExport(el.dataset.id); break;
+    case 'export-all': toggleExportAll(); break;
+    case 'export-share': await exportShare(); break;
+    case 'export-zip': await exportZip(); break;
     case 'move': askMove(); break;
     case 'confirm-move': await movePhoto(el.dataset.id); break;
     case 'delete': await deletePhoto(); break;
@@ -1443,7 +1661,7 @@ async function handle(action, el) {
     case 'lb-prev': await vGo(-1); break;
     case 'lb-next': await vGo(1); break;
     case 'lb-zoom': vToggleZoom(); break;
-    case 'lb-download': await downloadPhoto(viewer.list[viewer.i]); break;
+    case 'lb-save': await savePhotoToAlbum(viewer.list[viewer.i]); break;
     case 'lb-share': await sharePhoto(viewer.list[viewer.i]); break;
     case 'lb-edit':
       closeViewer();
